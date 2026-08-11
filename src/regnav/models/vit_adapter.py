@@ -16,7 +16,11 @@ class DinoV2Adapter(nn.Module):
             import timm
 
             backbone = timm.create_model(
-                model_name, pretrained=True, num_classes=0, global_pool=""
+                model_name,
+                pretrained=True,
+                num_classes=0,
+                global_pool="",
+                img_size=(image_size[1], image_size[0]),
             )
         self.backbone = backbone
 
