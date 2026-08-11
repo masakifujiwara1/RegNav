@@ -5,7 +5,7 @@ docs/superpowers/
 __pycache__/
 .pytest_cache/
 *.egg-info/
-data/
+/data/
 checkpoints/
 runs/
 *.pt
