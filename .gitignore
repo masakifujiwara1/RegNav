@@ -1,3 +1,13 @@
 .worktrees/
 .superpowers/
 docs/superpowers/
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+data/
+checkpoints/
+runs/
+*.pt
+*.pth
+*.onnx

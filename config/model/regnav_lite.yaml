@@ -1,0 +1,20 @@
+name: regnav_lite
+image_size: [320, 180]
+backbone: mobilenet_v3_small
+backbone_dim: 576
+patch_size: 1
+num_poses: 8
+interval: 0.5
+horizon: 4.0
+ego_features: 4
+route_features: 6
+num_proposals: 1
+num_scene_registers: 0
+d_model: 128
+d_ffn: 256
+num_heads: 4
+decoder_layers: 1
+num_refinements: 1
+scorer_layers: 1
+lora_rank: 0
+scorer_weights: [1.0, 1.0, 1.0, 1.0]
