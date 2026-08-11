@@ -36,3 +36,12 @@ uv run python scripts/build_manifest.py /data/regnav/recon /data/regnav/manifest
   --dataset recon --robot jackal --environment park \
   --date 2026-01-01 --sample-period 0.5
 ```
+
+For RECON, derive each recording date from its trajectory ID:
+
+```bash
+uv run python scripts/build_manifest.py /home/ubuntu/data/regnav/processed/recon-smoke \
+  /home/ubuntu/data/regnav/manifest-smoke.jsonl \
+  --dataset recon --robot jackal --environment recon \
+  --date-from-trajectory --sample-period 0.5
+```
