@@ -30,6 +30,10 @@ def _git_revision() -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _maybe_compile(model: torch.nn.Module, enabled: bool) -> torch.nn.Module:
+    return torch.compile(model, mode="reduce-overhead") if enabled else model
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a RegNav model")
     parser.add_argument("--model-config", type=Path, required=True)
@@ -39,6 +43,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--weights-only", action="store_true")
+    parser.add_argument("--compile", action="store_true")
     args = parser.parse_args()
 
     model_config, training_config = load_yaml_config(
@@ -87,12 +92,13 @@ def main() -> None:
         if not args.weights_only:
             start_epoch = checkpoint["epoch"]
 
+    training_model = _maybe_compile(model, args.compile)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     log_path = args.output_dir / "metrics.jsonl"
     best = float("inf")
     for epoch in range(start_epoch, training_config.epochs):
         set_training_stage(model, epoch, training_config.lora_start_epoch)
-        losses = train_epoch(model, loader, optimizer, training_config, device)
+        losses = train_epoch(training_model, loader, optimizer, training_config, device)
         with log_path.open("a") as file:
             file.write(json.dumps({"epoch": epoch + 1, **losses}) + "\n")
         checkpoint_args = dict(

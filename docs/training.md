@@ -19,14 +19,16 @@ uv run train-regnav \
   --training-config config/training/default.yaml \
   --manifest /data/regnav/manifest.jsonl \
   --split train \
-  --output-dir /data/regnav/runs/lite
+  --output-dir /data/regnav/runs/lite \
+  --compile
 
 uv run train-regnav \
   --model-config config/model/regnav.yaml \
   --training-config config/training/default.yaml \
   --manifest /data/regnav/manifest.jsonl \
   --split train \
-  --output-dir /data/regnav/runs/regnav
+  --output-dir /data/regnav/runs/regnav \
+  --compile
 
 uv run eval-regnav \
   --checkpoint /data/regnav/runs/regnav/best.pt \
@@ -41,6 +43,8 @@ uv run python -m regnav.benchmark \
 ```
 
 Run the benchmark for both RegNav and RegNav-Lite checkpoints. Acceptance requires:
+
+The `--compile` flag is opt-in for training; checkpoints remain loadable by evaluation without compilation.
 
 - RegNav ADE and FDE below the constant-velocity baseline on the held-out split.
 - RegNav ADE below the route-only baseline. Route-only FDE is informational because the baseline receives the exact target endpoint.
