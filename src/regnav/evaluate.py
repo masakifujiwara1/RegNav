@@ -30,10 +30,10 @@ def summarize_batch(
     result: dict[str, object] = {"model": model_metrics}
     for name, trajectory in baselines.items():
         result[name] = trajectory_metrics(trajectory, target, mask, interval)
-    result["beats_both_baselines"] = all(
-        model_metrics[metric] < result[name][metric]  # type: ignore[index]
-        for metric in ("ade", "fde")
-        for name in baselines
+    result["meets_baseline_acceptance"] = (
+        model_metrics["ade"] < result["constant_velocity"]["ade"]  # type: ignore[index]
+        and model_metrics["fde"] < result["constant_velocity"]["fde"]  # type: ignore[index]
+        and model_metrics["ade"] < result["route_only"]["ade"]  # type: ignore[index]
     )
     return result
 

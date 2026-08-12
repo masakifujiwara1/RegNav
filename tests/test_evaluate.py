@@ -4,9 +4,12 @@ from regnav.baselines import route_only
 from regnav.evaluate import summarize_batch
 
 
-def test_summary_contains_model_and_baseline_metrics():
+def test_summary_accepts_route_aware_model_without_beating_zero_route_fde():
     route = torch.tensor([[4.0, 0.0, 0.0, 0.0, 1.0, 0.0]])
     target = route_only(route, num_poses=8)
+    target[:, 1:-1, 1] = 0.5
+    prediction = target.clone()
+    prediction[:, :-1, 0] += 0.01
     batch = {
         "image": torch.zeros(1, 3, 4, 4),
         "ego": torch.zeros(1, 4),
@@ -15,9 +18,8 @@ def test_summary_contains_model_and_baseline_metrics():
         "valid_mask": torch.ones(1, 8, dtype=torch.bool),
     }
 
-    summary = summarize_batch(target, batch, interval=0.5)
+    summary = summarize_batch(prediction, batch, interval=0.5)
 
-    assert summary["model"]["ade"] == 0.0
-    assert summary["constant_velocity"]["ade"] > 0.0
     assert summary["route_only"]["fde"] == 0.0
-    assert summary["beats_both_baselines"] is False
+    assert summary["meets_baseline_acceptance"] is True
+    assert "beats_both_baselines" not in summary

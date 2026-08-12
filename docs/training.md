@@ -42,7 +42,8 @@ uv run python -m regnav.benchmark \
 
 Run the benchmark for both RegNav and RegNav-Lite checkpoints. Acceptance requires:
 
-- RegNav ADE and FDE below constant-velocity and route-only baselines on the held-out split.
+- RegNav ADE and FDE below the constant-velocity baseline on the held-out split.
+- RegNav ADE below the route-only baseline. Route-only FDE is informational because the baseline receives the exact target endpoint.
 - Selected-proposal privileged collision rate below the mean proposal collision rate.
 - Batch-1 p95 latency below 100 ms for both models.
 
