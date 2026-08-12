@@ -60,14 +60,16 @@ def main() -> None:
     dataset = VintTrajectoryDataset(records, model_config)
     labels = [records[record_index].dataset for record_index, _ in dataset.index]
     sampler = DomainBalancedSampler(labels, len(dataset), training_config.seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loader = DataLoader(
         dataset,
         batch_size=training_config.batch_size,
         sampler=sampler,
         num_workers=training_config.workers,
         collate_fn=collate_regnav,
+        pin_memory=device.type == "cuda",
+        persistent_workers=training_config.workers > 0,
     )
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_model(model_config).to(device)
     lora = [parameter for name, parameter in model.named_parameters() if "lora_" in name]
     regular = [parameter for name, parameter in model.named_parameters() if "lora_" not in name and parameter.requires_grad]

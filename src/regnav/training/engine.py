@@ -26,7 +26,10 @@ def set_training_stage(model: nn.Module, epoch: int, lora_start_epoch: int) -> N
 
 
 def _to_device(batch: RegNavBatch, device: torch.device) -> RegNavBatch:
-    return {key: value.to(device) for key, value in batch.items()}  # type: ignore[return-value]
+    return {
+        key: value.to(device, non_blocking=device.type == "cuda")
+        for key, value in batch.items()
+    }  # type: ignore[return-value]
 
 
 def train_epoch(

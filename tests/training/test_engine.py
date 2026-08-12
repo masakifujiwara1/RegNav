@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from regnav.config import ModelConfig, TrainingConfig
 from regnav.models.lite import RegNavLite
-from regnav.training.engine import load_checkpoint, save_checkpoint, train_epoch
+from regnav.training.engine import _to_device, load_checkpoint, save_checkpoint, train_epoch
 
 
 class FakeMobileNet(nn.Module):
@@ -45,6 +45,18 @@ def _batch():
         "target_trajectory": torch.randn(2, 8, 3),
         "valid_mask": torch.ones(2, 8, dtype=torch.bool),
     }
+
+
+def test_to_device_requests_non_blocking_cuda_transfer():
+    class TensorSpy:
+        def to(self, device, *, non_blocking):
+            self.call = (device, non_blocking)
+            return self
+
+    tensor = TensorSpy()
+
+    assert _to_device({"image": tensor}, torch.device("cuda"))["image"] is tensor
+    assert tensor.call == (torch.device("cuda"), True)
 
 
 def test_one_epoch_checkpoint_round_trip(tmp_path):
