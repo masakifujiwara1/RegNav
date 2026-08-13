@@ -18,7 +18,7 @@ Training refuses to overwrite a run directory containing `metrics.jsonl`, `best.
 ```bash
 uv run train-regnav \
   --model-config config/model/regnav_lite.yaml \
-  --training-config config/training/default.yaml \
+  --training-config config/training/rtx3060.yaml \
   --manifest /data/regnav/manifest.jsonl \
   --split train \
   --output-dir /data/regnav/runs/lite \
@@ -26,7 +26,7 @@ uv run train-regnav \
 
 uv run train-regnav \
   --model-config config/model/regnav.yaml \
-  --training-config config/training/default.yaml \
+  --training-config config/training/rtx3060.yaml \
   --manifest /data/regnav/manifest.jsonl \
   --split train \
   --output-dir /data/regnav/runs/regnav \
