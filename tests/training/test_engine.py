@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from regnav.config import ModelConfig, TrainingConfig
 from regnav.models.lite import RegNavLite
-from regnav.training.engine import _to_device, load_checkpoint, save_checkpoint, train_epoch
+from regnav.training.engine import _autocast_dtype, _to_device, load_checkpoint, save_checkpoint, train_epoch
 
 
 class FakeMobileNet(nn.Module):
@@ -57,6 +57,18 @@ def test_to_device_requests_non_blocking_cuda_transfer():
 
     assert _to_device({"image": tensor}, torch.device("cuda"))["image"] is tensor
     assert tensor.call == (torch.device("cuda"), True)
+
+
+def test_autocast_dtype_prefers_bfloat16_when_cuda_supports_it(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: True)
+
+    assert _autocast_dtype(torch.device("cuda")) is torch.bfloat16
+
+
+def test_autocast_dtype_falls_back_to_float16_without_bfloat16(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
+
+    assert _autocast_dtype(torch.device("cuda")) is torch.float16
 
 
 def test_one_epoch_checkpoint_round_trip(tmp_path):

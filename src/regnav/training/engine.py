@@ -25,6 +25,12 @@ def set_training_stage(model: nn.Module, epoch: int, lora_start_epoch: int) -> N
     set_lora_enabled(model, epoch >= lora_start_epoch)
 
 
+def _autocast_dtype(device: torch.device) -> torch.dtype:
+    if device.type != "cuda":
+        return torch.float32
+    return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
+
 def _to_device(batch: RegNavBatch, device: torch.device) -> RegNavBatch:
     return {
         key: value.to(device, non_blocking=device.type == "cuda")
@@ -47,7 +53,9 @@ def train_epoch(
     for batch in loader:
         batch = _to_device(batch, device)
         optimizer.zero_grad(set_to_none=True)
-        with torch.autocast(device.type, enabled=device.type == "cuda"):
+        with torch.autocast(
+            device.type, dtype=_autocast_dtype(device), enabled=device.type == "cuda"
+        ):
             losses = compute_loss(model(batch), batch, config)
         scaler.scale(losses["total"]).backward()
         scaler.unscale_(optimizer)
