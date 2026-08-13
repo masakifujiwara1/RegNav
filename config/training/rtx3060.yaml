@@ -6,7 +6,7 @@ lora_learning_rate: 0.00001
 weight_decay: 0.0001
 lora_start_epoch: 2
 gradient_clip_norm: 1.0
-workers: 4
+workers: 8
 trajectory_weight: 1.0
 heading_weight: 0.5
 smoothness_weight: 0.1
