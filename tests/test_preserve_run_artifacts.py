@@ -64,24 +64,47 @@ def test_preserve_artifacts_rejects_missing_source_and_existing_destination(tmp_
         preserve_artifacts({"x.pt": source}, destination)
 
 
-def test_preserve_artifacts_uses_atomic_rename(tmp_path, monkeypatch):
+def test_preserve_artifacts_uses_atomic_publish_when_rename_noreplace_is_available(tmp_path, monkeypatch):
     source = tmp_path / "selected.pt"
     source.write_bytes(b"weights")
     calls = {}
-    original_replace = os.replace
+    original_publish = MODULE._publish_directory_no_clobber
 
-    def fake_replace(source_path, target):
-        calls["source"] = Path(source_path)
-        calls["target"] = Path(target)
-        assert not Path(target).exists()
-        return original_replace(source_path, target)
+    def fake_publish(staged, destination):
+        calls["source"] = Path(staged)
+        calls["target"] = Path(destination)
+        assert not Path(destination).exists()
+        return original_publish(staged, destination)
 
-    monkeypatch.setattr(os, "replace", fake_replace)
+    monkeypatch.setattr(MODULE, "_publish_directory_no_clobber", fake_publish)
 
     preserve_artifacts({"regnav/selected.pt": source}, tmp_path / "preserved")
 
     assert calls["target"] == tmp_path / "preserved"
     assert calls["source"].name.startswith(".preserved.")
+
+
+
+def test_preserve_artifacts_does_not_clobber_destination_created_after_precheck(tmp_path, monkeypatch):
+    source = tmp_path / "selected.pt"
+    source.write_bytes(b"weights")
+    destination = tmp_path / "preserved"
+    injected = {"done": False}
+
+    def fake_rename_noreplace(staged, target):
+        if not injected["done"]:
+            injected["done"] = True
+            Path(target).mkdir()
+            (Path(target) / "keep.txt").write_text("original")
+        return False
+
+    monkeypatch.setattr(MODULE, "_rename_noreplace", fake_rename_noreplace)
+
+    with pytest.raises(FileExistsError):
+        preserve_artifacts({"regnav/selected.pt": source}, destination)
+
+    assert (destination / "keep.txt").read_text() == "original"
+    assert not (destination / "regnav/selected.pt").exists()
 
 
 def test_main_requires_five_inputs_and_writes_expected_layout(tmp_path, monkeypatch):

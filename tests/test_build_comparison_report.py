@@ -145,6 +145,31 @@ def test_build_report_rejects_existing_output(tmp_path):
 
     assert output.read_text() == "original"
 
+
+
+def test_build_report_does_not_clobber_output_created_after_precheck(tmp_path, monkeypatch):
+    regnav_test = _write_report(tmp_path / "regnav.json")
+    lite_test = _write_report(tmp_path / "lite.json")
+    output = tmp_path / "comparison.md"
+    original_open = Path.open
+    injected = {"done": False}
+
+    def fake_open(self, *args, **kwargs):
+        mode = kwargs.get("mode")
+        if mode is None and args:
+            mode = args[0]
+        if self == output and mode and any(flag in mode for flag in ("w", "x")) and not injected["done"]:
+            injected["done"] = True
+            self.write_text("original")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fake_open)
+
+    with pytest.raises(FileExistsError):
+        build_report(regnav_test, lite_test, output, _valid_latencies())
+
+    assert output.read_text() == "original"
+
 @pytest.mark.parametrize("invalid", [True, float("nan"), float("inf"), -1.0])
 def test_build_report_rejects_invalid_latency(tmp_path, invalid):
     regnav_test = _write_report(tmp_path / "regnav.json")

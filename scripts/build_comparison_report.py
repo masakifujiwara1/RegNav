@@ -87,10 +87,10 @@ Both evaluation files are held-out `test` split results and pass baseline accept
 - Preserved artifacts are the verified selected RegNav checkpoint, validation/test JSON, and RegNav-Lite checkpoint/test JSON.
 - RegNav's original `best.pt`, `last.pt`, and `metrics.jsonl` are excluded because they were contaminated by an unexplained second writer.
 """.format(rows="\n".join(rows))
-    if output.exists():
-        raise FileExistsError(f"comparison output already exists: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(report)
+    with output.open('x') as handle:
+        handle.write(report)
+
 
 def _parse_latency(value: str) -> dict[str, float]:
     try:
