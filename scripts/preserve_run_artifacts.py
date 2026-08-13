@@ -7,9 +7,19 @@ from shutil import copy2
 from tempfile import TemporaryDirectory
 
 
+def _validate_relative_name(relative_name: str) -> Path:
+    relative_path = Path(relative_name)
+    if relative_path.is_absolute():
+        raise ValueError(f"artifact path must be relative, got absolute path: {relative_name}")
+    if any(part == '..' for part in relative_path.parts):
+        raise ValueError(f"artifact path must not contain .. segments: {relative_name}")
+    return relative_path
+
+
 def preserve_artifacts(sources: dict[str, Path], destination: Path) -> dict[str, str]:
     if destination.exists():
         raise FileExistsError(f"destination already exists: {destination}")
+    relative_paths = {name: _validate_relative_name(name) for name in sources}
     missing = [name for name, source in sources.items() if not source.is_file()]
     if missing:
         raise FileNotFoundError(f"missing source artifacts: {', '.join(sorted(missing))}")
@@ -19,7 +29,7 @@ def preserve_artifacts(sources: dict[str, Path], destination: Path) -> dict[str,
         staged = Path(temp_dir)
         hashes: dict[str, str] = {}
         for relative_name, source in sorted(sources.items()):
-            target = staged / relative_name
+            target = staged / relative_paths[relative_name]
             target.parent.mkdir(parents=True, exist_ok=True)
             copy2(source, target)
             hashes[relative_name] = sha256(target.read_bytes()).hexdigest()

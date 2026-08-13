@@ -33,6 +33,24 @@ def test_preserve_artifacts_copies_and_hashes_sources(tmp_path):
     assert json.loads(manifest.read_text()) == hashes
 
 
+def test_preserve_artifacts_rejects_absolute_and_parent_escape_keys(tmp_path):
+    source = tmp_path / "selected.pt"
+    source.write_bytes(b"weights")
+    outside = tmp_path.parent / "escape.pt"
+    if outside.exists():
+        outside.unlink()
+
+    with pytest.raises(ValueError, match="absolute"):
+        preserve_artifacts({str((tmp_path / "absolute.pt").resolve()): source}, tmp_path / "absolute-dest")
+
+    with pytest.raises(ValueError, match=r'\.\.'):
+        preserve_artifacts({"../escape.pt": source}, tmp_path / "parent-dest")
+
+    assert not (tmp_path / "absolute-dest").exists()
+    assert not (tmp_path / "parent-dest").exists()
+    assert not outside.exists()
+
+
 def test_preserve_artifacts_rejects_missing_source_and_existing_destination(tmp_path):
     with pytest.raises(FileNotFoundError, match="missing.pt"):
         preserve_artifacts({"missing.pt": tmp_path / "missing.pt"}, tmp_path / "new")
