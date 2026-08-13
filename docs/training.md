@@ -54,3 +54,30 @@ The `--compile` flag is opt-in for training; checkpoints remain loadable by eval
 - Batch-1 p95 latency below 100 ms for both models.
 
 Retain evaluation JSON and benchmark output beside the checkpoints, outside Git.
+
+## Preserve and compare a verified run
+
+Preserve only the verified checkpoints and test reports in a new directory. The command refuses a missing source or an existing destination and writes `SHA256SUMS.json`:
+
+```bash
+uv run python scripts/preserve_run_artifacts.py \
+  --destination /data/regnav/preserved/2026-08-13-regnav-lite \
+  --regnav-selected /data/regnav/runs/regnav/selected.pt \
+  --regnav-validation /data/regnav/runs/regnav/validation-selected.json \
+  --regnav-test /data/regnav/runs/regnav/test.json \
+  --lite-best /data/regnav/runs/lite/best.pt \
+  --lite-test /data/regnav/runs/lite/test.json
+```
+
+Build the Markdown comparison from the preserved test JSON and measured CUDA batch-1 latency (`p50,p95,p99`, in milliseconds):
+
+```bash
+uv run python scripts/build_comparison_report.py \
+  --regnav-test /data/regnav/preserved/2026-08-13-regnav-lite/regnav/test.json \
+  --lite-test /data/regnav/preserved/2026-08-13-regnav-lite/lite/test.json \
+  --output /data/regnav/comparison-2026-08-13.md \
+  --regnav-latency 25.34463250049157,38.1562896509422,50.93840801928309 \
+  --lite-latency 3.8236,4.4414,4.9249
+```
+
+The comparison requires both reports to be `split: test` and to pass baseline acceptance. RECON collision metrics are reported as unavailable, not passed when obstacle labels are absent.
