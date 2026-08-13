@@ -105,3 +105,52 @@ def test_build_report_rejects_non_test_and_failed_acceptance(tmp_path, split, ac
                 "lite": {"p50": 1.0, "p95": 2.0, "p99": 3.0},
             },
         )
+
+def test_build_report_rejects_non_object_json(tmp_path):
+    regnav_test = tmp_path / "regnav.json"
+    regnav_test.write_text("[]\n")
+    lite_test = _write_report(tmp_path / "lite.json")
+
+    with pytest.raises(ValueError, match="object"):
+        build_report(
+            regnav_test,
+            lite_test,
+            tmp_path / "comparison.md",
+            {
+                "regnav": {"p50": 1.0, "p95": 2.0, "p99": 3.0},
+                "lite": {"p50": 1.0, "p95": 2.0, "p99": 3.0},
+            },
+        )
+
+def _valid_latencies():
+    return {"regnav": {"p50": 1.0, "p95": 2.0, "p99": 3.0}, "lite": {"p50": 1.0, "p95": 2.0, "p99": 3.0}}
+
+
+@pytest.mark.parametrize("checkpoint_hash", [None, ""])
+def test_build_report_requires_checkpoint_hash(tmp_path, checkpoint_hash):
+    regnav_test = _write_report(tmp_path / "regnav.json", checkpoint_hash=checkpoint_hash)
+    lite_test = _write_report(tmp_path / "lite.json")
+
+    with pytest.raises(ValueError, match="checkpoint_hash"):
+        build_report(regnav_test, lite_test, tmp_path / "comparison.md", _valid_latencies())
+
+def test_build_report_rejects_existing_output(tmp_path):
+    regnav_test = _write_report(tmp_path / "regnav.json")
+    lite_test = _write_report(tmp_path / "lite.json")
+    output = tmp_path / "comparison.md"
+    output.write_text("original")
+
+    with pytest.raises(FileExistsError):
+        build_report(regnav_test, lite_test, output, _valid_latencies())
+
+    assert output.read_text() == "original"
+
+@pytest.mark.parametrize("invalid", [True, float("nan"), float("inf"), -1.0])
+def test_build_report_rejects_invalid_latency(tmp_path, invalid):
+    regnav_test = _write_report(tmp_path / "regnav.json")
+    lite_test = _write_report(tmp_path / "lite.json")
+    latencies = _valid_latencies()
+    latencies["regnav"]["p95"] = invalid
+
+    with pytest.raises(ValueError, match="latency"):
+        build_report(regnav_test, lite_test, tmp_path / "comparison.md", latencies)

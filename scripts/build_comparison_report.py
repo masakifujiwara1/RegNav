@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 from pathlib import Path
 
 _LATENCY_FIELDS = ("p50", "p95", "p99")
@@ -7,8 +8,13 @@ _LATENCY_FIELDS = ("p50", "p95", "p99")
 
 def _load_accepted_test(path: Path) -> dict:
     data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"evaluation JSON must be an object: {path}")
     if data.get("split") != "test":
         raise ValueError(f"evaluation JSON must use the test split: {path}")
+    checkpoint_hash = data.get("checkpoint_hash")
+    if not isinstance(checkpoint_hash, str) or not checkpoint_hash:
+        raise ValueError(f"evaluation JSON requires a checkpoint_hash: {path}")
     aggregate = data.get("aggregate")
     if not isinstance(aggregate, dict) or aggregate.get("meets_baseline_acceptance") is not True:
         raise ValueError(f"evaluation JSON does not meet baseline acceptance: {path}")
@@ -21,7 +27,8 @@ def _validate_latencies(latencies: dict[str, dict[str, float]]) -> None:
         if not isinstance(values, dict) or any(field not in values for field in _LATENCY_FIELDS):
             raise ValueError(f"latencies must include {model} p50, p95, and p99")
         for field in _LATENCY_FIELDS:
-            if not isinstance(values[field], (int, float)):
+            value = values[field]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
                 raise ValueError(f"latency {model}.{field} must be numeric")
 
 
@@ -80,6 +87,8 @@ Both evaluation files are held-out `test` split results and pass baseline accept
 - Preserved artifacts are the verified selected RegNav checkpoint, validation/test JSON, and RegNav-Lite checkpoint/test JSON.
 - RegNav's original `best.pt`, `last.pt`, and `metrics.jsonl` are excluded because they were contaminated by an unexplained second writer.
 """.format(rows="\n".join(rows))
+    if output.exists():
+        raise FileExistsError(f"comparison output already exists: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(report)
 
