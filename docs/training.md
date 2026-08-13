@@ -11,6 +11,8 @@ uv run python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_
 
 Keep public datasets, manifests, runs, and checkpoints outside Git. Follow [data.md](data.md) for source licenses, provenance, checksums, and the processed trajectory format.
 
+Training refuses to overwrite a run directory containing `metrics.jsonl`, `best.pt`, or `last.pt`; use `--resume` or choose a new output directory. An evaluation JSON file alone does not block training.
+
 ## RTX 3060 commands
 
 ```bash

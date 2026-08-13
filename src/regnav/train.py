@@ -23,6 +23,21 @@ from regnav.training.engine import (
 from regnav.training.sampler import DomainBalancedSampler
 
 
+_TRAINING_ARTIFACTS = ("metrics.jsonl", "best.pt", "last.pt")
+
+
+def _ensure_output_dir_ready(output_dir: Path, resume: Path | None) -> None:
+    if resume is not None:
+        return
+    conflicts = [output_dir / name for name in _TRAINING_ARTIFACTS if (output_dir / name).exists()]
+    if conflicts:
+        paths = ", ".join(str(path) for path in conflicts)
+        raise FileExistsError(
+            f"output directory already contains training artifacts: {paths}; "
+            "use --resume or choose a new directory"
+        )
+
+
 def _git_revision() -> str | None:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
@@ -45,6 +60,7 @@ def main() -> None:
     parser.add_argument("--weights-only", action="store_true")
     parser.add_argument("--compile", action="store_true")
     args = parser.parse_args()
+    _ensure_output_dir_ready(args.output_dir, args.resume)
 
     model_config, training_config = load_yaml_config(
         args.model_config, args.training_config
