@@ -1,7 +1,9 @@
 import argparse
 import json
 import math
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 _LATENCY_FIELDS = ("p50", "p95", "p99")
 
@@ -88,8 +90,17 @@ Both evaluation files are held-out `test` split results and pass baseline accept
 - RegNav's original `best.pt`, `last.pt`, and `metrics.jsonl` are excluded because they were contaminated by an unexplained second writer.
 """.format(rows="\n".join(rows))
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open('x') as handle:
-        handle.write(report)
+    temp_output = None
+    try:
+        with NamedTemporaryFile('w', encoding='utf-8', dir=output.parent, prefix=f'.{output.name}.', suffix='.tmp', delete=False) as handle:
+            temp_output = Path(handle.name)
+            handle.write(report)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.link(temp_output, output)
+    finally:
+        if temp_output is not None and temp_output.exists():
+            temp_output.unlink()
 
 
 def _parse_latency(value: str) -> dict[str, float]:

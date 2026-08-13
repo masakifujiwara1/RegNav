@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -151,19 +152,16 @@ def test_build_report_does_not_clobber_output_created_after_precheck(tmp_path, m
     regnav_test = _write_report(tmp_path / "regnav.json")
     lite_test = _write_report(tmp_path / "lite.json")
     output = tmp_path / "comparison.md"
-    original_open = Path.open
+    original_link = os.link
     injected = {"done": False}
 
-    def fake_open(self, *args, **kwargs):
-        mode = kwargs.get("mode")
-        if mode is None and args:
-            mode = args[0]
-        if self == output and mode and any(flag in mode for flag in ("w", "x")) and not injected["done"]:
+    def fake_link(src, dst, *, src_dir_fd=None, dst_dir_fd=None, follow_symlinks=True):
+        if Path(dst) == output and not injected["done"]:
             injected["done"] = True
-            self.write_text("original")
-        return original_open(self, *args, **kwargs)
+            output.write_text("original")
+        return original_link(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd, follow_symlinks=follow_symlinks)
 
-    monkeypatch.setattr(Path, "open", fake_open)
+    monkeypatch.setattr(os, "link", fake_link)
 
     with pytest.raises(FileExistsError):
         build_report(regnav_test, lite_test, output, _valid_latencies())

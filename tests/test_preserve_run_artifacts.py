@@ -107,6 +107,32 @@ def test_preserve_artifacts_does_not_clobber_destination_created_after_precheck(
     assert not (destination / "regnav/selected.pt").exists()
 
 
+@pytest.mark.parametrize("conflict_relative_path", ["SHA256SUMS.json", "regnav/selected.pt"])
+def test_preserve_artifacts_fallback_publish_does_not_clobber_concurrent_child(tmp_path, monkeypatch, conflict_relative_path):
+    source = tmp_path / "selected.pt"
+    source.write_bytes(b"weights")
+    destination = tmp_path / "preserved"
+    original_link = os.link
+    injected = {"done": False}
+
+    def fake_rename_noreplace(staged, target):
+        return False
+
+    def fake_link(src, dst, *, src_dir_fd=None, dst_dir_fd=None, follow_symlinks=True):
+        if not injected["done"] and Path(dst) == destination / conflict_relative_path:
+            injected["done"] = True
+            Path(dst).write_text("original")
+        return original_link(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(MODULE, "_rename_noreplace", fake_rename_noreplace)
+    monkeypatch.setattr(os, "link", fake_link)
+
+    with pytest.raises(FileExistsError):
+        preserve_artifacts({"regnav/selected.pt": source}, destination)
+
+    assert (destination / conflict_relative_path).read_text() == "original"
+
+
 def test_main_requires_five_inputs_and_writes_expected_layout(tmp_path, monkeypatch):
     selected = tmp_path / "selected.pt"
     validation = tmp_path / "validation-selected.json"

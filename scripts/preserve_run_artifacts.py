@@ -47,13 +47,23 @@ def _rename_noreplace(source: Path, destination: Path) -> bool:
     raise OSError(err, os.strerror(err), destination)
 
 
+def _publish_path_no_clobber(staged: Path, destination: Path) -> None:
+    if staged.is_dir():
+        destination.mkdir()
+        for child in staged.iterdir():
+            _publish_path_no_clobber(child, destination / child.name)
+        return
+    if staged.is_file():
+        os.link(staged, destination)
+        return
+    raise OSError(f"unsupported staged artifact type: {staged}")
+
+
 def _publish_directory_no_clobber(staged: Path, destination: Path) -> None:
     if _rename_noreplace(staged, destination):
         return
 
-    destination.mkdir()
-    for child in staged.iterdir():
-        os.replace(child, destination / child.name)
+    _publish_path_no_clobber(staged, destination)
 
 
 def preserve_artifacts(sources: dict[str, Path], destination: Path) -> dict[str, str]:
