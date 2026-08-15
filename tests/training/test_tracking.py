@@ -222,6 +222,55 @@ def test_training_tracker_marks_reraised_errors_as_failed(monkeypatch, tmp_path)
     assert fake.end_run_calls == [{"status": "FAILED"}]
 
 
+def test_training_tracker_preserves_training_error_when_end_run_fails(
+    monkeypatch, tmp_path
+):
+    fake = FakeMlflow()
+
+    def fail_end_run(**kwargs):
+        fake.end_run_calls.append(kwargs)
+        raise RuntimeError("end run boom")
+
+    fake.end_run = fail_end_run
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with pytest.raises(RuntimeError, match="training boom"):
+        with _tracker(tmp_path):
+            raise RuntimeError("training boom")
+
+    assert fake.end_run_calls == [{"status": "FAILED"}]
+
+
+def test_training_tracker_closes_started_run_after_setup_failure(
+    monkeypatch, tmp_path
+):
+    fake = FakeMlflow()
+
+    def fail_log_params(params):
+        fake.log_params_calls.append(params)
+        raise RuntimeError("setup boom")
+
+    def fail_end_run(**kwargs):
+        fake.end_run_calls.append(kwargs)
+        raise RuntimeError("end run boom")
+
+    fake.log_params = fail_log_params
+    fake.end_run = fail_end_run
+    monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with pytest.raises(RuntimeError, match="setup boom"):
+        _tracker(tmp_path).__enter__()
+
+    assert fake.start_run_calls == [{"run_name": "test-run"}]
+    assert fake.end_run_calls == [{"status": "FAILED"}]
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
+
+
 def test_disabled_training_tracker_does_not_import_or_call_mlflow(monkeypatch, tmp_path):
     imports = []
     fake = FakeMlflow()

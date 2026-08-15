@@ -74,6 +74,7 @@ class TrainingTracker:
         self.experiment = experiment
         self.run_name = run_name
         self._mlflow = None
+        self._run_started = False
         self._file_store_env = None
         self._file_store_env_set = False
 
@@ -100,6 +101,7 @@ class TrainingTracker:
             self._mlflow.set_tracking_uri(tracking_uri)
             self._mlflow.set_experiment(self.experiment)
             self._mlflow.start_run(run_name=self.run_name)
+            self._run_started = True
             self._mlflow.log_params(
                 {
                     **flatten_config("model", self.model_config),
@@ -116,6 +118,12 @@ class TrainingTracker:
                 }
             )
         except Exception:
+            if self._run_started:
+                try:
+                    self._mlflow.end_run(status="FAILED")
+                except Exception:
+                    pass
+                self._run_started = False
             self._restore_file_store_environment()
             raise
         return self
@@ -147,9 +155,15 @@ class TrainingTracker:
     def __exit__(self, exc_type, exc_value, traceback) -> bool:
         try:
             if self._mlflow is not None:
-                self._mlflow.end_run(
-                    status="FAILED" if exc_type is not None else "FINISHED"
-                )
+                try:
+                    self._mlflow.end_run(
+                        status="FAILED" if exc_type is not None else "FINISHED"
+                    )
+                except Exception:
+                    if exc_type is None:
+                        raise
+                finally:
+                    self._run_started = False
         finally:
             self._restore_file_store_environment()
         return False
