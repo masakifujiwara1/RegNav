@@ -74,33 +74,50 @@ class TrainingTracker:
         self.experiment = experiment
         self.run_name = run_name
         self._mlflow = None
+        self._file_store_env = None
+        self._file_store_env_set = False
+
+    def _restore_file_store_environment(self) -> None:
+        if not self._file_store_env_set:
+            return
+        if self._file_store_env is None:
+            os.environ.pop("MLFLOW_ALLOW_FILE_STORE", None)
+        else:
+            os.environ["MLFLOW_ALLOW_FILE_STORE"] = self._file_store_env
+        self._file_store_env_set = False
 
     def __enter__(self) -> "TrainingTracker":
         if not self.enabled:
             return self
 
-        self._mlflow = importlib.import_module("mlflow")
         tracking_uri = resolve_tracking_uri(self.output_dir, self.tracking_uri)
         if tracking_uri.startswith("file:"):
-            os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
-        self._mlflow.set_tracking_uri(tracking_uri)
-        self._mlflow.set_experiment(self.experiment)
-        self._mlflow.start_run(run_name=self.run_name)
-        self._mlflow.log_params(
-            {
-                **flatten_config("model", self.model_config),
-                **flatten_config("training", self.training_config),
-            }
-        )
-        self._mlflow.set_tags(
-            {
-                "split": self.split,
-                "manifest_hash": self.manifest_hash,
-                "device": self.device,
-                "compile_enabled": str(self.compile_enabled),
-                "git_revision": self.git_revision or "unknown",
-            }
-        )
+            self._file_store_env = os.environ.get("MLFLOW_ALLOW_FILE_STORE")
+            self._file_store_env_set = True
+            os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
+        try:
+            self._mlflow = importlib.import_module("mlflow")
+            self._mlflow.set_tracking_uri(tracking_uri)
+            self._mlflow.set_experiment(self.experiment)
+            self._mlflow.start_run(run_name=self.run_name)
+            self._mlflow.log_params(
+                {
+                    **flatten_config("model", self.model_config),
+                    **flatten_config("training", self.training_config),
+                }
+            )
+            self._mlflow.set_tags(
+                {
+                    "split": self.split,
+                    "manifest_hash": self.manifest_hash,
+                    "device": self.device,
+                    "compile_enabled": str(self.compile_enabled),
+                    "git_revision": self.git_revision or "unknown",
+                }
+            )
+        except Exception:
+            self._restore_file_store_environment()
+            raise
         return self
 
     def log_epoch(self, epoch: int, losses: Mapping[str, float]) -> None:
@@ -128,8 +145,11 @@ class TrainingTracker:
                 self._mlflow.log_artifact(str(path))
 
     def __exit__(self, exc_type, exc_value, traceback) -> bool:
-        if self._mlflow is not None:
-            self._mlflow.end_run(
-                status="FAILED" if exc_type is not None else "FINISHED"
-            )
+        try:
+            if self._mlflow is not None:
+                self._mlflow.end_run(
+                    status="FAILED" if exc_type is not None else "FINISHED"
+                )
+        finally:
+            self._restore_file_store_environment()
         return False

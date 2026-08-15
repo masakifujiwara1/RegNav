@@ -131,7 +131,7 @@ def test_training_tracker_runs_lifecycle_and_logs_epoch(monkeypatch, tmp_path):
     assert fake.end_run_calls == [{"status": "FINISHED"}]
 
 
-def test_training_tracker_enables_file_store_for_file_uri(monkeypatch, tmp_path):
+def test_training_tracker_restores_unset_file_store_environment(monkeypatch, tmp_path):
     fake = FakeMlflow()
     monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
     monkeypatch.setattr(
@@ -139,9 +139,38 @@ def test_training_tracker_enables_file_store_for_file_uri(monkeypatch, tmp_path)
     )
 
     with _tracker(tmp_path):
-        pass
+        assert os.environ["MLFLOW_ALLOW_FILE_STORE"] == "true"
 
-    assert os.environ["MLFLOW_ALLOW_FILE_STORE"] == "true"
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
+
+
+def test_training_tracker_restores_existing_file_store_environment(monkeypatch, tmp_path):
+    fake = FakeMlflow()
+    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "preserve-me")
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with _tracker(tmp_path):
+        assert os.environ["MLFLOW_ALLOW_FILE_STORE"] == "true"
+
+    assert os.environ["MLFLOW_ALLOW_FILE_STORE"] == "preserve-me"
+
+
+def test_training_tracker_restores_file_store_environment_when_enter_fails(
+    monkeypatch, tmp_path
+):
+    fake = FakeMlflow()
+    fake.set_experiment = lambda experiment: (_ for _ in ()).throw(RuntimeError("boom"))
+    monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _tracker(tmp_path).__enter__()
+
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
 
 
 def test_training_tracker_leaves_file_store_disabled_for_external_uri(
@@ -156,6 +185,25 @@ def test_training_tracker_leaves_file_store_disabled_for_external_uri(
     )
 
     with tracker:
+        pass
+
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
+
+
+def test_local_tracker_does_not_leak_file_store_setting_to_external_tracker(
+    monkeypatch, tmp_path
+):
+    fake = FakeMlflow()
+    monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with _tracker(tmp_path):
+        pass
+    external_tracker = _tracker(tmp_path)
+    external_tracker.tracking_uri = "https://tracking.example"
+    with external_tracker:
         pass
 
     assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
@@ -189,6 +237,23 @@ def test_disabled_training_tracker_does_not_import_or_call_mlflow(monkeypatch, t
 
     assert imports == []
     assert all(not value for value in vars(fake).values())
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
+
+
+def test_local_tracker_does_not_leak_file_store_setting_to_disabled_tracker(
+    monkeypatch, tmp_path
+):
+    fake = FakeMlflow()
+    monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with _tracker(tmp_path):
+        pass
+    with _tracker(tmp_path, enabled=False):
+        pass
+
     assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
 
 
