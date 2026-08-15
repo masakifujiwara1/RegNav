@@ -8,6 +8,7 @@ __pycache__/
 /data/
 checkpoints/
 runs/
+mlruns/
 *.pt
 *.pth
 *.onnx

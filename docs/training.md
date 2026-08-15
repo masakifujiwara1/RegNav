@@ -13,6 +13,25 @@ Keep public datasets, manifests, runs, and checkpoints outside Git. Follow [data
 
 Training refuses to overwrite a run directory containing `metrics.jsonl`, `best.pt`, or `last.pt`; use `--resume` or choose a new output directory. An evaluation JSON file alone does not block training.
 
+## MLflow training monitoring
+
+MLflow records parameters at run start, loss metrics after every epoch, and small logs, configuration, and checkpoint metadata after successful completion. Keep training outputs and the local `mlruns/` store outside Git.
+
+```bash
+# Default local tracking store: <output-dir parent>/mlruns
+uv run train-regnav --model-config config/model/regnav.yaml --training-config config/training/rtx3060.yaml --manifest /data/regnav/manifest.jsonl --split train --output-dir /data/regnav/runs/regnav-run --compile
+
+# Open the local UI
+uv run mlflow ui --backend-store-uri /data/regnav/runs/mlruns --port 5000
+
+# Explicit remote store
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run train-regnav --model-config config/model/regnav.yaml --training-config config/training/rtx3060.yaml --manifest /data/regnav/manifest.jsonl --split train --output-dir /data/regnav/runs/regnav-run --compile
+
+# Explicit opt-out
+uv run train-regnav --model-config config/model/regnav.yaml --training-config config/training/rtx3060.yaml --manifest /data/regnav/manifest.jsonl --split train --output-dir /data/regnav/runs/regnav-run --compile --no-mlflow
+```
+
 ## RTX 3060 commands
 
 ```bash
