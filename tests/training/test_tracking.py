@@ -1,4 +1,5 @@
 import hashlib
+import os
 
 import pytest
 
@@ -130,6 +131,36 @@ def test_training_tracker_runs_lifecycle_and_logs_epoch(monkeypatch, tmp_path):
     assert fake.end_run_calls == [{"status": "FINISHED"}]
 
 
+def test_training_tracker_enables_file_store_for_file_uri(monkeypatch, tmp_path):
+    fake = FakeMlflow()
+    monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with _tracker(tmp_path):
+        pass
+
+    assert os.environ["MLFLOW_ALLOW_FILE_STORE"] == "true"
+
+
+def test_training_tracker_leaves_file_store_disabled_for_external_uri(
+    monkeypatch, tmp_path
+):
+    fake = FakeMlflow()
+    tracker = _tracker(tmp_path)
+    tracker.tracking_uri = "https://tracking.example"
+    monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with tracker:
+        pass
+
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
+
+
 def test_training_tracker_marks_reraised_errors_as_failed(monkeypatch, tmp_path):
     fake = FakeMlflow()
     monkeypatch.setattr(
@@ -146,6 +177,7 @@ def test_training_tracker_marks_reraised_errors_as_failed(monkeypatch, tmp_path)
 def test_disabled_training_tracker_does_not_import_or_call_mlflow(monkeypatch, tmp_path):
     imports = []
     fake = FakeMlflow()
+    monkeypatch.delenv("MLFLOW_ALLOW_FILE_STORE", raising=False)
     monkeypatch.setattr(
         "regnav.training.tracking.importlib.import_module",
         lambda name: imports.append(name) or fake,
@@ -157,6 +189,7 @@ def test_disabled_training_tracker_does_not_import_or_call_mlflow(monkeypatch, t
 
     assert imports == []
     assert all(not value for value in vars(fake).values())
+    assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
 
 
 def test_training_tracker_logs_present_artifacts(monkeypatch, tmp_path):

@@ -80,9 +80,10 @@ class TrainingTracker:
             return self
 
         self._mlflow = importlib.import_module("mlflow")
-        self._mlflow.set_tracking_uri(
-            resolve_tracking_uri(self.output_dir, self.tracking_uri)
-        )
+        tracking_uri = resolve_tracking_uri(self.output_dir, self.tracking_uri)
+        if tracking_uri.startswith("file:"):
+            os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+        self._mlflow.set_tracking_uri(tracking_uri)
         self._mlflow.set_experiment(self.experiment)
         self._mlflow.start_run(run_name=self.run_name)
         self._mlflow.log_params(
