@@ -1,6 +1,68 @@
 import hashlib
 
-from regnav.training.tracking import checkpoint_manifest, flatten_config, resolve_tracking_uri
+import pytest
+
+from regnav.training.tracking import (
+    TrainingTracker,
+    checkpoint_manifest,
+    flatten_config,
+    resolve_tracking_uri,
+)
+
+
+class FakeMlflow:
+    def __init__(self):
+        self.set_tracking_uri_calls = []
+        self.set_experiment_calls = []
+        self.start_run_calls = []
+        self.log_params_calls = []
+        self.set_tags_calls = []
+        self.log_metrics_calls = []
+        self.log_artifact_calls = []
+        self.end_run_calls = []
+
+    def set_tracking_uri(self, uri):
+        self.set_tracking_uri_calls.append(uri)
+
+    def set_experiment(self, experiment):
+        self.set_experiment_calls.append(experiment)
+
+    def start_run(self, **kwargs):
+        self.start_run_calls.append(kwargs)
+
+    def log_params(self, params):
+        self.log_params_calls.append(params)
+
+    def set_tags(self, tags):
+        self.set_tags_calls.append(tags)
+
+    def log_metrics(self, metrics, step):
+        self.log_metrics_calls.append((metrics, step))
+
+    def log_artifact(self, path):
+        self.log_artifact_calls.append(path)
+
+    def end_run(self, **kwargs):
+        self.end_run_calls.append(kwargs)
+
+
+def _tracker(tmp_path, enabled=True):
+    return TrainingTracker(
+        enabled=enabled,
+        output_dir=tmp_path / "run",
+        model_config={"d_model": 16},
+        training_config={"epochs": 2},
+        model_config_path=tmp_path / "model.yaml",
+        training_config_path=tmp_path / "training.yaml",
+        split="train",
+        manifest_hash="manifest-hash",
+        device="cpu",
+        compile_enabled=False,
+        git_revision="git-revision",
+        tracking_uri="file:///tmp/mlruns",
+        experiment="regnav",
+        run_name="test-run",
+    )
 
 
 def test_resolve_tracking_uri_prefers_explicit_then_environment(monkeypatch, tmp_path):
@@ -36,3 +98,84 @@ def test_checkpoint_manifest_describes_present_checkpoints_and_ignores_missing(t
         "sha256": hashlib.sha256(b"best").hexdigest(),
     }
     assert manifest["last.pt"] is None
+
+
+def test_training_tracker_runs_lifecycle_and_logs_epoch(monkeypatch, tmp_path):
+    fake = FakeMlflow()
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with _tracker(tmp_path) as tracker:
+        tracker.log_epoch(3, {"total": 0.25, "trajectory": 0.1})
+
+    assert fake.set_tracking_uri_calls == ["file:///tmp/mlruns"]
+    assert fake.set_experiment_calls == ["regnav"]
+    assert fake.start_run_calls == [{"run_name": "test-run"}]
+    assert fake.log_params_calls == [
+        {"model.d_model": "16", "training.epochs": "2"}
+    ]
+    assert fake.set_tags_calls == [
+        {
+            "split": "train",
+            "manifest_hash": "manifest-hash",
+            "device": "cpu",
+            "compile_enabled": "False",
+            "git_revision": "git-revision",
+        }
+    ]
+    assert fake.log_metrics_calls == [
+        ({"train/total": 0.25, "train/trajectory": 0.1}, 3)
+    ]
+    assert fake.end_run_calls == [{"status": "FINISHED"}]
+
+
+def test_training_tracker_marks_reraised_errors_as_failed(monkeypatch, tmp_path):
+    fake = FakeMlflow()
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with _tracker(tmp_path):
+            raise RuntimeError("boom")
+
+    assert fake.end_run_calls == [{"status": "FAILED"}]
+
+
+def test_disabled_training_tracker_does_not_import_or_call_mlflow(monkeypatch, tmp_path):
+    imports = []
+    fake = FakeMlflow()
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module",
+        lambda name: imports.append(name) or fake,
+    )
+
+    with _tracker(tmp_path, enabled=False) as tracker:
+        tracker.log_epoch(3, {"total": 0.25})
+        tracker.log_artifacts(3, 0.25)
+
+    assert imports == []
+    assert all(not value for value in vars(fake).values())
+
+
+def test_training_tracker_logs_present_artifacts(monkeypatch, tmp_path):
+    fake = FakeMlflow()
+    monkeypatch.setattr(
+        "regnav.training.tracking.importlib.import_module", lambda name: fake
+    )
+    tracker = _tracker(tmp_path)
+    tracker.output_dir.mkdir()
+    tracker.model_config_path.write_text("d_model: 16\n")
+    tracker.training_config_path.write_text("epochs: 2\n")
+    (tracker.output_dir / "metrics.jsonl").write_text('{"total": 0.25}\n')
+
+    with tracker:
+        tracker.log_artifacts(final_epoch=2, best_loss=0.25)
+
+    assert fake.log_artifact_calls == [
+        str(tracker.output_dir / "metrics.jsonl"),
+        str(tracker.model_config_path),
+        str(tracker.training_config_path),
+        str(tracker.output_dir / "checkpoint-manifest.json"),
+    ]
