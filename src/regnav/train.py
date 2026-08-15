@@ -21,6 +21,7 @@ from regnav.training.engine import (
     train_epoch,
 )
 from regnav.training.sampler import DomainBalancedSampler
+from regnav.training.tracking import TrainingTracker
 
 
 _TRAINING_ARTIFACTS = ("metrics.jsonl", "best.pt", "last.pt")
@@ -49,7 +50,7 @@ def _maybe_compile(model: torch.nn.Module, enabled: bool) -> torch.nn.Module:
     return torch.compile(model, mode="reduce-overhead") if enabled else model
 
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train a RegNav model")
     parser.add_argument("--model-config", type=Path, required=True)
     parser.add_argument("--training-config", type=Path, required=True)
@@ -59,7 +60,15 @@ def main() -> None:
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--weights-only", action="store_true")
     parser.add_argument("--compile", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("--no-mlflow", action="store_true")
+    parser.add_argument("--mlflow-tracking-uri")
+    parser.add_argument("--mlflow-experiment", default="regnav")
+    parser.add_argument("--mlflow-run-name")
+    return parser
+
+
+def main() -> None:
+    args = _build_parser().parse_args()
     _ensure_output_dir_ready(args.output_dir, args.resume)
 
     model_config, training_config = load_yaml_config(
@@ -114,24 +123,42 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     log_path = args.output_dir / "metrics.jsonl"
     best = float("inf")
-    for epoch in range(start_epoch, training_config.epochs):
-        set_training_stage(model, epoch, training_config.lora_start_epoch)
-        losses = train_epoch(training_model, loader, optimizer, training_config, device)
-        with log_path.open("a") as file:
-            file.write(json.dumps({"epoch": epoch + 1, **losses}) + "\n")
-        checkpoint_args = dict(
-            model=model,
-            optimizer=optimizer,
-            epoch=epoch + 1,
-            model_config=model_config,
-            training_config=training_config,
-            manifest_hash=manifest_hash,
-            git_revision=_git_revision(),
-        )
-        save_checkpoint(args.output_dir / "last.pt", **checkpoint_args)
-        if losses["total"] < best:
-            best = losses["total"]
-            save_checkpoint(args.output_dir / "best.pt", **checkpoint_args)
+    with TrainingTracker(
+        enabled=not args.no_mlflow,
+        output_dir=args.output_dir,
+        model_config=asdict(model_config),
+        training_config=asdict(training_config),
+        model_config_path=args.model_config,
+        training_config_path=args.training_config,
+        split=args.split,
+        manifest_hash=manifest_hash,
+        device=str(device),
+        compile_enabled=args.compile,
+        git_revision=_git_revision(),
+        tracking_uri=args.mlflow_tracking_uri,
+        experiment=args.mlflow_experiment,
+        run_name=args.mlflow_run_name,
+    ) as tracker:
+        for epoch in range(start_epoch, training_config.epochs):
+            set_training_stage(model, epoch, training_config.lora_start_epoch)
+            losses = train_epoch(training_model, loader, optimizer, training_config, device)
+            with log_path.open("a") as file:
+                file.write(json.dumps({"epoch": epoch + 1, **losses}) + "\n")
+            tracker.log_epoch(epoch + 1, losses)
+            checkpoint_args = dict(
+                model=model,
+                optimizer=optimizer,
+                epoch=epoch + 1,
+                model_config=model_config,
+                training_config=training_config,
+                manifest_hash=manifest_hash,
+                git_revision=_git_revision(),
+            )
+            save_checkpoint(args.output_dir / "last.pt", **checkpoint_args)
+            if losses["total"] < best:
+                best = losses["total"]
+                save_checkpoint(args.output_dir / "best.pt", **checkpoint_args)
+        tracker.log_artifacts(final_epoch=training_config.epochs, best_loss=best)
 
 
 if __name__ == "__main__":

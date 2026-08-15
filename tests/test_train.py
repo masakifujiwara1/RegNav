@@ -3,7 +3,30 @@ from pathlib import Path
 import pytest
 from torch import nn
 
-from regnav.train import _ensure_output_dir_ready, _maybe_compile
+from regnav.train import _build_parser, _ensure_output_dir_ready, _maybe_compile
+
+
+def _required_train_args():
+    return [
+        "--model-config", "model.yaml",
+        "--training-config", "training.yaml",
+        "--manifest", "manifest.jsonl",
+        "--split", "train",
+        "--output-dir", "run",
+    ]
+
+
+def test_mlflow_is_enabled_by_default():
+    args = _build_parser().parse_args(_required_train_args())
+
+    assert args.no_mlflow is False
+    assert args.mlflow_experiment == "regnav"
+
+
+def test_no_mlflow_is_explicit_opt_out():
+    args = _build_parser().parse_args(_required_train_args() + ["--no-mlflow"])
+
+    assert args.no_mlflow is True
 
 
 def test_maybe_compile_uses_reduce_overhead(monkeypatch):
