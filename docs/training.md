@@ -16,6 +16,9 @@ Training refuses to overwrite a run directory containing `metrics.jsonl`, `best.
 ## MLflow training monitoring
 
 MLflow records parameters at run start, loss metrics after every epoch, and small logs, configuration, and checkpoint metadata after successful completion. Keep training outputs and the local `mlruns/` store outside Git.
+Each run also records `dataset_family=vint` and the comma-separated
+`dataset_subsets` tag. Per-subset trajectory/sample counts are stored as
+`data.<subset>.trajectories` and `data.<subset>.samples`; the same summary is uploaded as `dataset-summary.json`.
 
 ```bash
 # Default local tracking store: <output-dir parent>/mlruns

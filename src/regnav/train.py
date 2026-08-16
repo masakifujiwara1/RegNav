@@ -21,7 +21,7 @@ from regnav.training.engine import (
     train_epoch,
 )
 from regnav.training.sampler import DomainBalancedSampler
-from regnav.training.tracking import TrainingTracker
+from regnav.training.tracking import TrainingTracker, build_dataset_summary
 
 
 _TRAINING_ARTIFACTS = ("metrics.jsonl", "best.pt", "last.pt")
@@ -83,6 +83,13 @@ def main() -> None:
         raise ValueError(f"manifest has no {args.split} trajectories")
 
     dataset = VintTrajectoryDataset(records, model_config)
+    dataset_summary = build_dataset_summary(
+        family="vint",
+        split=args.split,
+        manifest_hash=manifest_hash,
+        trajectory_subsets=[record.dataset for record in records],
+        sample_subsets=[records[record_index].dataset for record_index, _ in dataset.index],
+    )
     labels = [records[record_index].dataset for record_index, _ in dataset.index]
     sampler = DomainBalancedSampler(labels, len(dataset), training_config.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -138,6 +145,7 @@ def main() -> None:
         tracking_uri=args.mlflow_tracking_uri,
         experiment=args.mlflow_experiment,
         run_name=args.mlflow_run_name,
+        dataset_summary=dataset_summary,
     ) as tracker:
         for epoch in range(start_epoch, training_config.epochs):
             set_training_stage(model, epoch, training_config.lora_start_epoch)

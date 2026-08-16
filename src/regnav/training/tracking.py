@@ -2,8 +2,31 @@ import hashlib
 import importlib
 import json
 import os
+from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Mapping
+
+
+def build_dataset_summary(
+    *,
+    family: str,
+    split: str,
+    manifest_hash: str,
+    trajectory_subsets: Sequence[str],
+    sample_subsets: Sequence[str],
+) -> dict[str, object]:
+    trajectory_counts = Counter(trajectory_subsets)
+    sample_counts = Counter(sample_subsets)
+    subsets = sorted(set(trajectory_counts) | set(sample_counts))
+    return {
+        "dataset_family": family,
+        "dataset_subsets": subsets,
+        "split": split,
+        "manifest_hash": manifest_hash,
+        "trajectories": dict(sorted(trajectory_counts.items())),
+        "samples": dict(sorted(sample_counts.items())),
+    }
 
 
 def resolve_tracking_uri(output_dir: Path, explicit_uri: str | None) -> str:
@@ -58,6 +81,7 @@ class TrainingTracker:
         tracking_uri: str | None,
         experiment: str,
         run_name: str | None,
+        dataset_summary: Mapping[str, object] | None = None,
     ):
         self.enabled = enabled
         self.output_dir = output_dir
@@ -73,6 +97,7 @@ class TrainingTracker:
         self.tracking_uri = tracking_uri
         self.experiment = experiment
         self.run_name = run_name
+        self.dataset_summary = dataset_summary
         self._mlflow = None
         self._run_started = False
         self._file_store_env = None
@@ -102,21 +127,38 @@ class TrainingTracker:
             self._mlflow.set_experiment(self.experiment)
             self._mlflow.start_run(run_name=self.run_name)
             self._run_started = True
-            self._mlflow.log_params(
-                {
-                    **flatten_config("model", self.model_config),
-                    **flatten_config("training", self.training_config),
-                }
-            )
-            self._mlflow.set_tags(
-                {
-                    "split": self.split,
-                    "manifest_hash": self.manifest_hash,
-                    "device": self.device,
-                    "compile_enabled": str(self.compile_enabled),
-                    "git_revision": self.git_revision or "unknown",
-                }
-            )
+            params = {
+                **flatten_config("model", self.model_config),
+                **flatten_config("training", self.training_config),
+            }
+            tags = {
+                "split": self.split,
+                "manifest_hash": self.manifest_hash,
+                "device": self.device,
+                "compile_enabled": str(self.compile_enabled),
+                "git_revision": self.git_revision or "unknown",
+            }
+            if self.dataset_summary is not None:
+                params.update(
+                    {
+                        f"data.{subset}.trajectories": str(count)
+                        for subset, count in self.dataset_summary["trajectories"].items()
+                    }
+                )
+                params.update(
+                    {
+                        f"data.{subset}.samples": str(count)
+                        for subset, count in self.dataset_summary["samples"].items()
+                    }
+                )
+                tags.update(
+                    {
+                        "dataset_family": str(self.dataset_summary["dataset_family"]),
+                        "dataset_subsets": ",".join(self.dataset_summary["dataset_subsets"]),
+                    }
+                )
+            self._mlflow.log_params(params)
+            self._mlflow.set_tags(tags)
         except Exception:
             if self._run_started:
                 try:
@@ -143,12 +185,17 @@ class TrainingTracker:
         manifest_path.write_text(
             json.dumps(checkpoint_manifest(self.output_dir, final_epoch, best_loss))
         )
-        for path in (
+        artifact_paths = [
             self.output_dir / "metrics.jsonl",
             self.model_config_path,
             self.training_config_path,
             manifest_path,
-        ):
+        ]
+        if self.dataset_summary is not None:
+            dataset_summary_path = self.output_dir / "dataset-summary.json"
+            dataset_summary_path.write_text(json.dumps(self.dataset_summary, sort_keys=True))
+            artifact_paths.append(dataset_summary_path)
+        for path in artifact_paths:
             if path.is_file():
                 self._mlflow.log_artifact(str(path))
 
