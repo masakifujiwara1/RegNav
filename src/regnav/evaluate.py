@@ -12,7 +12,7 @@ import torch
 from regnav.baselines import constant_velocity, route_only
 from regnav.config import ModelConfig
 from regnav.data.collate import collate_regnav
-from regnav.data.manifest import group_split, load_manifest
+from regnav.data.manifest import group_split, load_manifest, record_domain
 from regnav.data.vint_dataset import VintTrajectoryDataset
 from regnav.metrics import trajectory_metrics
 from regnav.models.factory import build_model
@@ -57,7 +57,8 @@ def _visualization_sample(
     target = sample_batch["target_trajectory"]
     metrics = summarize_batch(prediction, sample_batch, interval)
     sample: dict[str, object] = {
-        "dataset": record.dataset,
+        "dataset": record_domain(record),
+        "robot": record.robot,
         "trajectory_id": record.trajectory_id,
         "frame": frame,
         "image": sample_batch["image"][0],
@@ -137,7 +138,7 @@ def main() -> None:
         for index in range(len(dataset)):
             record_index, frame = dataset.index[index]
             record = records[record_index]
-            name = record.dataset
+            name = record_domain(record)
             batch = {key: value.to(device) for key, value in collate_regnav([dataset[index]]).items()}
             output = model(batch)
             predictions[name].append(output["trajectory"].cpu())

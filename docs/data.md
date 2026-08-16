@@ -3,7 +3,6 @@
 RegNav Phase 1 uses forward JPEG images and 2D odometry from these official sources:
 
 - [RECON](https://sites.google.com/view/recon-robot/dataset)
-- [BeoNav](https://sites.google.com/usc.edu/beonav/)
 - [SCAND](https://www.cs.utexas.edu/~xiao/SCAND/SCAND.html)
 - [HuRoN](https://sites.google.com/view/sacson-review/huron-dataset)
 - [TartanDrive 2.0](https://theairlab.org/TartanDrive2/)
@@ -46,32 +45,45 @@ uv run python scripts/build_manifest.py /home/ubuntu/data/regnav/processed/recon
   --date-from-trajectory --sample-period 0.5
 ```
 
-## BeoNav conversion
+## SCAND conversion
 
-BeoNav supplies wheeled-robot camera/control logs from the USC campus. The
-converter keeps the raw ROS bag outside this repository and writes one
-ViNT-style trajectory plus a JSONL row:
+SCAND provides wheeled Jackal and legged Spot demonstrations with camera
+images and measured odometry. Convert each bag separately so `robot` remains
+explicit in the manifest and in training/evaluation domain labels:
 
 ```bash
-uv run --group data python scripts/convert_beonav.py \
-  /home/ubuntu/data/regnav/raw/2023-03-27-11-12-41.bag \
-  /home/ubuntu/data/regnav/processed/beonav \
-  /home/ubuntu/data/regnav/manifest-beonav.jsonl \
-  --source-url https://ilab.usc.edu/kiran/beonav/2023-03-27-11-12-41.bag
+uv run --group data python scripts/convert_scand.py \
+  /home/ubuntu/data/regnav/raw/scand-jackal-gdc-2021-10-29-11.bag \
+  /home/ubuntu/data/regnav/processed/scand \
+  /home/ubuntu/data/regnav/manifest-scand-jackal.jsonl \
+  --robot jackal --date 2021-10-29 --environment ut-campus \
+  --source-url https://doi.org/10.18738/T8/0PRYRH
+
+uv run --group data python scripts/convert_scand.py \
+  /home/ubuntu/data/regnav/raw/scand-spot-ballstructure-2021-11-10-60.bag \
+  /home/ubuntu/data/regnav/processed/scand \
+  /home/ubuntu/data/regnav/manifest-scand-spot.jsonl \
+  --robot spot --date 2021-11-10 --environment ut-campus \
+  --source-url https://doi.org/10.18738/T8/0PRYRH
 ```
 
-`rosbags` is optional and only needed by this converter. This bag has image,
-`/cmd_vel`, wheel-velocity, and IMU topics but no odometry topic, so the
-converter records a provisional target by integrating the latest
-`/cmd_vel` (`linear.x`, `angular.z`) with a unicycle model. The generated
-`*-provenance.json` records that assumption and the source SHA-256; do not
-treat these positions as ground-truth odometry when comparing against RECON.
+The converter uses measured `nav_msgs/Odometry` poses interpolated at image
+timestamps. It records the official SCAND DOI, source SHA-256, selected image
+and odometry topics, and robot in `*-provenance.json`. Manifest rows use
+`dataset=scand` with `robot=jackal` or `robot=spot`; training, evaluation, and
+visualization expose these as `scand/jackal` and `scand/spot`.
 
-To train or evaluate on both sources, concatenate the JSONL manifests outside
-the repository:
+The ROS bag dependency is optional and installed only for conversion:
+
+```bash
+uv run --group data python scripts/convert_scand.py --help
+```
+
+Combine manifests outside the repository when desired:
 
 ```bash
 cat /home/ubuntu/data/regnav/manifest-recon.jsonl \
-    /home/ubuntu/data/regnav/manifest-beonav.jsonl \
-  > /home/ubuntu/data/regnav/manifest-recon-beonav.jsonl
+    /home/ubuntu/data/regnav/manifest-scand-jackal.jsonl \
+    /home/ubuntu/data/regnav/manifest-scand-spot.jsonl \
+  > /home/ubuntu/data/regnav/manifest-recon-scand.jsonl
 ```

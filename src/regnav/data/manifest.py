@@ -25,6 +25,11 @@ class TrajectoryRecord:
             raise ValueError("sample_period must be positive")
 
 
+def record_domain(record: TrajectoryRecord) -> str:
+    """Return a stable dataset/robot label for balancing and reports."""
+    return f"{record.dataset}/{record.robot}"
+
+
 def load_manifest(path: Path) -> list[TrajectoryRecord]:
     required = {
         "trajectory_id",

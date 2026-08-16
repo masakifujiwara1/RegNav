@@ -189,6 +189,7 @@ def _metadata(sample: Mapping[str, object], file_name: str) -> dict[str, object]
         "dataset": dataset,
         "dataset_family": str(sample.get("dataset_family", family)),
         "subset": str(sample.get("subset", subset)),
+        "robot": str(sample.get("robot", "unknown")),
         "trajectory_id": str(sample.get("trajectory_id", "unknown")),
         "frame": int(sample.get("frame", -1)),
         "metrics": sample.get("metrics", {}),
