@@ -60,6 +60,18 @@ uv run eval-regnav \
   --split test \
   --output /data/regnav/runs/regnav/test.json
 
+# Quantitative report plus qualitative trajectory browser (12 representative + 12 ADE-worst)
+uv run eval-regnav \
+  --checkpoint /data/regnav/runs/regnav/best.pt \
+  --manifest /data/regnav/manifest.jsonl \
+  --split test \
+  --output /data/regnav/runs/regnav/test-with-viz.json \
+  --visualize-dir /data/regnav/runs/regnav/test-viz \
+  --visualize-count 12 \
+  --visualize-worst-k 12
+# Open /data/regnav/runs/regnav/test-viz/index.html locally.
+# samples.jsonl maps each image to dataset/subset and ADE/FDE/heading metrics.
+
 uv run python -m regnav.benchmark \
   --checkpoint /data/regnav/runs/regnav/best.pt \
   --device cuda \

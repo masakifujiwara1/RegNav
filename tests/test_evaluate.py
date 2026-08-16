@@ -1,7 +1,7 @@
 import torch
 
 from regnav.baselines import route_only
-from regnav.evaluate import summarize_batch
+from regnav.evaluate import build_parser, summarize_batch
 
 
 def test_summary_accepts_route_aware_model_without_beating_zero_route_fde():
@@ -23,3 +23,28 @@ def test_summary_accepts_route_aware_model_without_beating_zero_route_fde():
     assert summary["route_only"]["fde"] == 0.0
     assert summary["meets_baseline_acceptance"] is True
     assert "beats_both_baselines" not in summary
+
+
+def test_parser_accepts_trajectory_visualization_options():
+    args = build_parser().parse_args(
+        [
+            "--checkpoint",
+            "model.pt",
+            "--manifest",
+            "manifest.jsonl",
+            "--split",
+            "test",
+            "--output",
+            "report.json",
+            "--visualize-dir",
+            "viz",
+            "--visualize-count",
+            "4",
+            "--visualize-worst-k",
+            "2",
+        ]
+    )
+
+    assert str(args.visualize_dir) == "viz"
+    assert args.visualize_count == 4
+    assert args.visualize_worst_k == 2
