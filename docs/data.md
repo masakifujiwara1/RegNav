@@ -45,3 +45,33 @@ uv run python scripts/build_manifest.py /home/ubuntu/data/regnav/processed/recon
   --dataset recon --robot jackal --environment recon \
   --date-from-trajectory --sample-period 0.5
 ```
+
+## BeoNav conversion
+
+BeoNav supplies wheeled-robot camera/control logs from the USC campus. The
+converter keeps the raw ROS bag outside this repository and writes one
+ViNT-style trajectory plus a JSONL row:
+
+```bash
+uv run --group data python scripts/convert_beonav.py \
+  /home/ubuntu/data/regnav/raw/2023-03-27-11-12-41.bag \
+  /home/ubuntu/data/regnav/processed/beonav \
+  /home/ubuntu/data/regnav/manifest-beonav.jsonl \
+  --source-url https://ilab.usc.edu/kiran/beonav/2023-03-27-11-12-41.bag
+```
+
+`rosbags` is optional and only needed by this converter. This bag has image,
+`/cmd_vel`, wheel-velocity, and IMU topics but no odometry topic, so the
+converter records a provisional target by integrating the latest
+`/cmd_vel` (`linear.x`, `angular.z`) with a unicycle model. The generated
+`*-provenance.json` records that assumption and the source SHA-256; do not
+treat these positions as ground-truth odometry when comparing against RECON.
+
+To train or evaluate on both sources, concatenate the JSONL manifests outside
+the repository:
+
+```bash
+cat /home/ubuntu/data/regnav/manifest-recon.jsonl \
+    /home/ubuntu/data/regnav/manifest-beonav.jsonl \
+  > /home/ubuntu/data/regnav/manifest-recon-beonav.jsonl
+```
