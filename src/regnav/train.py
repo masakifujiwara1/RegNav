@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from regnav.config import load_yaml_config
 from regnav.data.collate import collate_regnav
-from regnav.data.manifest import group_split, load_manifest
+from regnav.data.manifest import group_split, load_manifest, record_domain
 from regnav.data.vint_dataset import VintTrajectoryDataset
 from regnav.models.factory import build_model
 from regnav.training.engine import (
@@ -87,10 +87,12 @@ def main() -> None:
         family="vint",
         split=args.split,
         manifest_hash=manifest_hash,
-        trajectory_subsets=[record.dataset for record in records],
-        sample_subsets=[records[record_index].dataset for record_index, _ in dataset.index],
+        trajectory_subsets=[record_domain(record) for record in records],
+        sample_subsets=[
+            record_domain(records[record_index]) for record_index, _ in dataset.index
+        ],
     )
-    labels = [records[record_index].dataset for record_index, _ in dataset.index]
+    labels = [record_domain(records[record_index]) for record_index, _ in dataset.index]
     sampler = DomainBalancedSampler(labels, len(dataset), training_config.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loader = DataLoader(

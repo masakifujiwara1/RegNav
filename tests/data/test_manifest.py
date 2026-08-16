@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from regnav.data.manifest import TrajectoryRecord, group_split, load_manifest
+from regnav.data.manifest import TrajectoryRecord, group_split, load_manifest, record_domain
 
 
 def _record(trajectory_id, environment, date):
@@ -41,3 +41,26 @@ def test_manifest_rejects_missing_source_fields(tmp_path):
 def test_group_split_rejects_invalid_ratios():
     with pytest.raises(ValueError, match="sum to one"):
         group_split([_record("a", "park", "2026-01-01")], 7, (0.8, 0.2, 0.1))
+
+def test_record_domain_keeps_dataset_and_robot_distinct():
+    jackal = TrajectoryRecord(
+        trajectory_id="jackal",
+        dataset="scand",
+        robot="jackal",
+        environment="campus",
+        date="2021-10-29",
+        path="/data/jackal",
+        sample_period=0.1,
+    )
+    spot = TrajectoryRecord(
+        trajectory_id="spot",
+        dataset="scand",
+        robot="spot",
+        environment="campus",
+        date="2021-11-10",
+        path="/data/spot",
+        sample_period=0.1,
+    )
+
+    assert record_domain(jackal) == "scand/jackal"
+    assert record_domain(spot) == "scand/spot"

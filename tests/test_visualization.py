@@ -15,6 +15,7 @@ def _sample() -> dict[str, object]:
         "dataset": "recon",
         "dataset_family": "vint",
         "subset": "recon",
+        "robot": "jackal",
         "trajectory_id": "route-a",
         "frame": 3,
         "metrics": {
@@ -60,4 +61,5 @@ def test_write_visualization_index_records_metadata_and_metrics(tmp_path):
     assert "ADE" in index
     saved = json.loads((tmp_path / "samples.jsonl").read_text().splitlines()[0])
     assert saved["dataset_family"] == "vint"
+    assert saved["robot"] == "jackal"
     assert saved["metrics"]["model"]["fde"] == 0.2
