@@ -76,3 +76,11 @@ def test_interpolate_odometry_clamps_small_end_sync_gap():
     )
 
     np.testing.assert_allclose(positions[:, 0], [0.0, 1.0], atol=1e-6)
+
+
+def test_interpolate_odometry_clamps_sync_gap_with_fast_odometry():
+    odometry = [OdomSample(index * 0.012, index * 0.012, 0.0, 0.0) for index in range(84)]
+
+    positions, _ = interpolate_odometry([0.0, 1.031], odometry)
+
+    np.testing.assert_allclose(positions[:, 0], [0.0, 0.996], atol=1e-6)

@@ -62,7 +62,7 @@ def interpolate_odometry(
     _validate_timestamps(odometry_timestamps, "odometry")
     source_times = np.asarray(odometry_timestamps, dtype=np.float64)
     image_times = np.asarray(image_timestamps, dtype=np.float64)
-    edge_tolerance = min(0.1, float(np.median(np.diff(source_times))))
+    edge_tolerance = 0.1
     if (
         image_times[0] < source_times[0] - edge_tolerance
         or image_times[-1] > source_times[-1] + edge_tolerance
