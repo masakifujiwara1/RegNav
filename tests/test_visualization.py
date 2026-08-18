@@ -4,9 +4,7 @@ import torch
 from PIL import Image
 
 from regnav.visualization import (
-    _bounds,
     dataset_labels,
-    project_local_trajectory,
     render_trajectory_png,
     trajectory_with_origin,
     write_visualization_index,
@@ -47,31 +45,6 @@ def test_trajectory_with_origin_connects_future_only_points_to_current_pose():
         result,
         torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.2, 0.1], [2.0, 0.4, 0.2]]),
     )
-
-
-def test_project_local_trajectory_maps_forward_to_image_up():
-    points = project_local_trajectory(
-        torch.tensor([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
-        image_size=(100, 100),
-        forward_range=4.0,
-        lateral_range=2.0,
-    )
-
-    assert points[0][0] == 50
-    assert points[0][1] > points[1][1]
-    assert all(0 <= coordinate < 100 for point in points for coordinate in point)
-
-
-def test_bounds_include_current_pose_origin_for_future_only_trajectories():
-    bounds = _bounds(
-        {
-            "target": torch.tensor([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
-            "prediction": torch.tensor([[1.2, 0.1, 0.0], [2.1, 0.1, 0.0]]),
-        }
-    )
-
-    assert bounds[0] < 0 < bounds[1]
-    assert bounds[2] < 0 < bounds[3]
 
 
 def test_render_trajectory_png_contains_input_and_top_down_plot(tmp_path):

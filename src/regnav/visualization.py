@@ -72,11 +72,7 @@ def _bounds(sample: Mapping[str, object]) -> tuple[float, float, float, float]:
     values = []
     for key in ("target", "prediction", "constant_velocity", "route_only", "obstacles"):
         if sample.get(key) is not None:
-            points = _xy(
-                trajectory_with_origin(sample[key])
-                if key != "obstacles"
-                else sample[key]
-            )
+            points = _xy(sample[key])
             if len(points):
                 values.append(points)
     if not values:
@@ -97,103 +93,11 @@ def _bounds(sample: Mapping[str, object]) -> tuple[float, float, float, float]:
 def trajectory_with_origin(value: object) -> object:
     """Prepend the current-pose origin to a future-only trajectory for display."""
     if isinstance(value, torch.Tensor):
-        if len(value) and torch.allclose(value[0], torch.zeros_like(value[0])):
-            return value
         return torch.cat((torch.zeros_like(value[:1]), value), dim=0)
     array = np.asarray(value)
     if array.ndim != 2 or array.shape[1] < 2:
         raise ValueError("trajectory values must have shape (poses, >=2)")
-    if len(array) and np.allclose(array[0], 0):
-        return array
     return np.concatenate((np.zeros((1, array.shape[1]), dtype=array.dtype), array), axis=0)
-
-
-def project_local_trajectory(
-    value: object,
-    image_size: tuple[int, int],
-    *,
-    forward_range: float | None = None,
-    lateral_range: float | None = None,
-) -> list[tuple[int, int]]:
-    """Project local x-forward/y-left points into an approximate image overlay."""
-    points = _xy(trajectory_with_origin(value))
-    width, height = image_size
-    if width <= 0 or height <= 0:
-        raise ValueError("image_size must contain positive dimensions")
-    if forward_range is None:
-        forward_range = max(4.0, float(points[:, 0].max()) + 1.0)
-    if lateral_range is None:
-        lateral_range = max(2.0, float(np.abs(points[:, 1]).max()) + 0.5)
-    if forward_range <= 0 or lateral_range <= 0:
-        raise ValueError("projection ranges must be positive")
-    margin_x = max(8, round(width * 0.06))
-    margin_y = max(8, round(height * 0.06))
-    half_width = width / 2 - margin_x
-    x_pixels = width / 2 + np.clip(points[:, 1] / lateral_range, -1, 1) * half_width
-    y_pixels = (
-        height
-        - margin_y
-        - np.clip(points[:, 0], 0, forward_range)
-        / forward_range
-        * (height - 2 * margin_y)
-    )
-    return [
-        (
-            int(np.clip(round(float(x)), 0, width - 1)),
-            int(np.clip(round(float(y)), 0, height - 1)),
-        )
-        for x, y in zip(x_pixels, y_pixels)
-    ]
-
-
-def _overlay_local_trajectories(
-    image: Image.Image, sample: Mapping[str, object]
-) -> Image.Image:
-    values = [
-        _xy(trajectory_with_origin(sample[key]))
-        for key in ("target", "prediction")
-        if sample.get(key) is not None
-    ]
-    if not values:
-        return image
-    all_points = np.concatenate(values, axis=0)
-    forward_range = max(4.0, float(all_points[:, 0].max()) + 1.0)
-    lateral_range = max(2.0, float(np.abs(all_points[:, 1]).max()) + 0.5)
-    base = image.convert("RGBA")
-    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    colors = {"target": (35, 190, 75, 220), "prediction": (220, 45, 45, 235)}
-    width = max(2, round(min(image.size) * 0.012))
-    for key, color in colors.items():
-        if sample.get(key) is None:
-            continue
-        points = project_local_trajectory(
-            sample[key],
-            image.size,
-            forward_range=forward_range,
-            lateral_range=lateral_range,
-        )
-        draw.line(points, fill=color, width=width, joint="curve")
-        radius = max(3, width + 1)
-        for point in (points[0], points[-1]):
-            draw.ellipse(
-                (point[0] - radius, point[1] - radius, point[0] + radius, point[1] + radius),
-                fill=color,
-            )
-    origin = project_local_trajectory(
-        np.zeros((1, 3), dtype=np.float32),
-        image.size,
-        forward_range=forward_range,
-        lateral_range=lateral_range,
-    )[0]
-    radius = max(3, width + 1)
-    draw.ellipse(
-        (origin[0] - radius, origin[1] - radius, origin[0] + radius, origin[1] + radius),
-        fill=(30, 100, 230, 255),
-    )
-    draw.rectangle((6, 6, 175, 24), fill=(0, 0, 0, 160))
-    draw.text((10, 9), "approx. local overlay", fill=(255, 255, 255, 255))
-    return Image.alpha_composite(base, layer).convert("RGB")
 
 
 def _draw_trajectory(
@@ -239,17 +143,14 @@ def render_trajectory_png(sample: Mapping[str, object], output_path: Path) -> No
         draw.text((24, 40), metric_text, fill="black", font=font)
 
     image_box = (24, 90, 544, 650)
-    frame = ImageOps.contain(
-        _overlay_local_trajectories(_image(sample["image"]), sample),
-        (image_box[2] - image_box[0], image_box[3] - image_box[1]),
-    )
+    frame = ImageOps.contain(_image(sample["image"]), (image_box[2] - image_box[0], image_box[3] - image_box[1]))
     image_position = (
         image_box[0] + (image_box[2] - image_box[0] - frame.width) // 2,
         image_box[1] + (image_box[3] - image_box[1] - frame.height) // 2,
     )
     canvas.paste(frame, image_position)
     draw.rectangle(image_box, outline=(100, 100, 100), width=2)
-    draw.text((image_box[0], image_box[1] - 18), "input frame + approximate overlay", fill="black", font=font)
+    draw.text((image_box[0], image_box[1] - 18), "input frame", fill="black", font=font)
 
     plot_box = (650, 110, 1150, 650)
     draw.rectangle(plot_box, outline=(100, 100, 100), width=2)
