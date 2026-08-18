@@ -6,6 +6,7 @@ from PIL import Image
 from regnav.visualization import (
     dataset_labels,
     render_trajectory_png,
+    trajectory_with_origin,
     write_visualization_index,
 )
 
@@ -33,6 +34,17 @@ def _sample() -> dict[str, object]:
 def test_dataset_labels_default_to_vint_family():
     assert dataset_labels("recon") == ("vint", "recon")
     assert dataset_labels("vint/recon") == ("vint", "recon")
+
+
+def test_trajectory_with_origin_connects_future_only_points_to_current_pose():
+    trajectory = torch.tensor([[1.0, 0.2, 0.1], [2.0, 0.4, 0.2]])
+
+    result = trajectory_with_origin(trajectory)
+
+    torch.testing.assert_close(
+        result,
+        torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.2, 0.1], [2.0, 0.4, 0.2]]),
+    )
 
 
 def test_render_trajectory_png_contains_input_and_top_down_plot(tmp_path):

@@ -90,6 +90,16 @@ def _bounds(sample: Mapping[str, object]) -> tuple[float, float, float, float]:
     )
 
 
+def trajectory_with_origin(value: object) -> object:
+    """Prepend the current-pose origin to a future-only trajectory for display."""
+    if isinstance(value, torch.Tensor):
+        return torch.cat((torch.zeros_like(value[:1]), value), dim=0)
+    array = np.asarray(value)
+    if array.ndim != 2 or array.shape[1] < 2:
+        raise ValueError("trajectory values must have shape (poses, >=2)")
+    return np.concatenate((np.zeros((1, array.shape[1]), dtype=array.dtype), array), axis=0)
+
+
 def _draw_trajectory(
     draw: ImageDraw.ImageDraw,
     sample: Mapping[str, object],
@@ -100,7 +110,10 @@ def _draw_trajectory(
 ) -> None:
     if sample.get(key) is None:
         return
-    points = [_plot_point(point, bounds, box) for point in _xy(sample[key])]
+    points = [
+        _plot_point(point, bounds, box)
+        for point in _xy(trajectory_with_origin(sample[key]))
+    ]
     if len(points) > 1:
         draw.line(points, fill=color, width=5, joint="curve")
     for point in (points[0], points[-1]):
