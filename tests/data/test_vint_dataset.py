@@ -57,6 +57,12 @@ def test_dataset_emits_only_samples_with_complete_future(tmp_path):
     assert sample["target_trajectory"].shape == (8, 3)
     assert sample["valid_mask"].shape == (8,)
     torch.testing.assert_close(sample["target_trajectory"][-1, 0], torch.tensor(4.0))
+    torch.testing.assert_close(
+        sample["image"][:, 0, 0],
+        torch.tensor([-2.1179, -2.0357, -1.8044]),
+        rtol=1e-4,
+        atol=1e-4,
+    )
 
 
 def test_collate_pads_optional_obstacle_points(tmp_path):

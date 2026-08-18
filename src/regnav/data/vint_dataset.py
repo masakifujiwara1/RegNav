@@ -13,6 +13,10 @@ from regnav.data.geometry import poses_to_local, resample_future, route_goal_fro
 from regnav.data.manifest import TrajectoryRecord
 
 
+_IMAGE_MEAN = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(3, 1, 1)
+_IMAGE_STD = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(3, 1, 1)
+
+
 class VintTrajectoryDataset(Dataset[dict[str, torch.Tensor]]):
     def __init__(self, records: Sequence[TrajectoryRecord], config: ModelConfig):
         self.records = records
@@ -50,6 +54,7 @@ class VintTrajectoryDataset(Dataset[dict[str, torch.Tensor]]):
         image = Image.open(root / f"{frame}.jpg").convert("RGB")
         image = image.resize(self.config.image_size, Image.Resampling.BILINEAR)
         image_tensor = torch.from_numpy(np.asarray(image, dtype=np.float32).copy()).permute(2, 0, 1) / 255
+        image_tensor = (image_tensor - _IMAGE_MEAN) / _IMAGE_STD
         sample = {
             "image": image_tensor,
             "ego": torch.from_numpy(self._ego(positions, yaws, frame, record.sample_period)),
