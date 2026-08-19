@@ -5,11 +5,11 @@ import pytest
 from regnav.data.manifest import TrajectoryRecord, group_split, load_manifest, record_domain
 
 
-def _record(trajectory_id, environment, date):
+def _record(trajectory_id, environment, date, *, robot="jackal", dataset="recon"):
     return TrajectoryRecord(
         trajectory_id=trajectory_id,
-        dataset="recon",
-        robot="jackal",
+        dataset=dataset,
+        robot=robot,
         environment=environment,
         date=date,
         path=f"/data/{trajectory_id}",
@@ -28,6 +28,36 @@ def test_group_split_keeps_environment_date_together():
 
     assert split["a"] == split["b"]
     assert set(split.values()) <= {"train", "validation", "test"}
+
+
+def test_group_split_populates_positive_splits_when_groups_are_available():
+    records = [_record(f"r{i}", "campus", f"2026-01-{i:02d}") for i in range(1, 5)]
+
+    split = group_split(records, seed=7, ratios=(0.8, 0.1, 0.1))
+
+    assert set(split.values()) == {"train", "validation", "test"}
+
+
+def test_group_split_covers_domains_in_held_out_splits_when_possible():
+    records = [
+        _record("jackal-a", "campus", "2026-01-01", robot="jackal", dataset="scand"),
+        _record("jackal-b", "campus", "2026-01-02", robot="jackal", dataset="scand"),
+        _record("jackal-c", "campus", "2026-01-03", robot="jackal", dataset="scand"),
+        *[
+            _record(f"spot-{i}", "campus", f"2026-01-{i:02d}", robot="spot", dataset="scand")
+            for i in range(4, 10)
+        ],
+    ]
+
+    split = group_split(records, seed=7, ratios=(0.6, 0.2, 0.2))
+
+    for held_out in ("validation", "test"):
+        domains = {
+            record_domain(record)
+            for record in records
+            if split[record.trajectory_id] == held_out
+        }
+        assert domains == {"scand/jackal", "scand/spot"}
 
 
 def test_manifest_rejects_missing_source_fields(tmp_path):
