@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 train-regnav = "regnav.train:main"
 eval-regnav = "regnav.evaluate:main"
+infer-regnav = "regnav.inference:main"
 
 [dependency-groups]
 test = ["pytest>=8,<10"]

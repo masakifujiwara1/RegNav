@@ -17,6 +17,12 @@ _IMAGE_MEAN = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(3, 1
 _IMAGE_STD = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(3, 1, 1)
 
 
+def preprocess_image(image: Image.Image, image_size: tuple[int, int]) -> torch.Tensor:
+    image = image.convert("RGB").resize(image_size, Image.Resampling.BILINEAR)
+    tensor = torch.from_numpy(np.asarray(image, dtype=np.float32).copy()).permute(2, 0, 1) / 255
+    return (tensor - _IMAGE_MEAN) / _IMAGE_STD
+
+
 class VintTrajectoryDataset(Dataset[dict[str, torch.Tensor]]):
     def __init__(self, records: Sequence[TrajectoryRecord], config: ModelConfig):
         self.records = records
@@ -51,10 +57,8 @@ class VintTrajectoryDataset(Dataset[dict[str, torch.Tensor]]):
         query_times = np.arange(1, self.config.num_poses + 1, dtype=np.float32) * self.config.interval
         target = resample_future(timestamps, local, query_times)
 
-        image = Image.open(root / f"{frame}.jpg").convert("RGB")
-        image = image.resize(self.config.image_size, Image.Resampling.BILINEAR)
-        image_tensor = torch.from_numpy(np.asarray(image, dtype=np.float32).copy()).permute(2, 0, 1) / 255
-        image_tensor = (image_tensor - _IMAGE_MEAN) / _IMAGE_STD
+        image = Image.open(root / f"{frame}.jpg")
+        image_tensor = preprocess_image(image, self.config.image_size)
         sample = {
             "image": image_tensor,
             "ego": torch.from_numpy(self._ego(positions, yaws, frame, record.sample_period)),
