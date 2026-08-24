@@ -7,21 +7,26 @@ from regnav.models.lora import inject_attention_lora
 from regnav.models.registers import SceneRegisterPool, TrajectoryRegisterDecoder
 from regnav.models.scorer import TrajectoryScorer
 from regnav.models.vit_adapter import DinoV2Adapter
+from regnav.models.vjepa_adapter import VJEPA2Adapter
 
 
 class RegNav(nn.Module):
     def __init__(self, config: ModelConfig, backbone: nn.Module | None = None):
         super().__init__()
         self.config = config
-        if backbone is None:
-            adapter = DinoV2Adapter(
-                config.backbone, config.image_size, config.patch_size
+        if config.backbone.startswith("vjepa2_1_"):
+            adapter = VJEPA2Adapter(
+                config.backbone,
+                config.image_size,
+                config.patch_size,
+                config.context_frames,
+                backbone,
             )
-            backbone = adapter.backbone
         else:
             adapter = DinoV2Adapter(
                 config.backbone, config.image_size, config.patch_size, backbone
             )
+        backbone = adapter.backbone
         inject_attention_lora(backbone, config.lora_rank)
         self.backbone = backbone
         self.image_adapter = adapter

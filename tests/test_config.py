@@ -52,3 +52,14 @@ def test_tensor_contract_keys_are_stable():
         "score_components",
     }
     assert RegNavOutput.__optional_keys__ == {"refinements"}
+
+
+
+def test_vjepa_config_uses_four_frame_vit_base():
+    model = ModelConfig.from_yaml(Path("config/model/regnav_vjepa2_1_vitb.yaml"))
+
+    assert model.image_size == (384, 384)
+    assert model.backbone == "vjepa2_1_vit_base_384"
+    assert model.backbone_dim == 768
+    assert model.patch_size == 16
+    assert model.context_frames == 4

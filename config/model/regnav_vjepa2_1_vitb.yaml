@@ -1,0 +1,21 @@
+name: regnav
+image_size: [384, 384]
+backbone: vjepa2_1_vit_base_384
+backbone_dim: 768
+patch_size: 16
+context_frames: 4
+num_poses: 8
+interval: 0.5
+horizon: 4.0
+ego_features: 4
+route_features: 6
+num_proposals: 8
+num_scene_registers: 8
+d_model: 256
+d_ffn: 1024
+num_heads: 8
+decoder_layers: 4
+num_refinements: 2
+scorer_layers: 2
+lora_rank: 8
+scorer_weights: [1.0, 1.0, 1.0, 1.0]

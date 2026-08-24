@@ -43,6 +43,24 @@ class FakeDinoBackbone(nn.Module):
         return tokens
 
 
+class FakeVJEPA2Backbone(nn.Module):
+    embed_dim = 4
+
+    def __init__(self):
+        super().__init__()
+        self.patch = nn.Linear(3, 4)
+        self.blocks = nn.ModuleList([FakeBlock()])
+        self.input_shape = None
+
+    def forward(self, video):
+        self.input_shape = tuple(video.shape)
+        pooled = video.mean(dim=(-3, -2, -1))
+        tokens = self.patch(pooled)[:, None].repeat(1, 6, 1)
+        for block in self.blocks:
+            tokens = block(tokens)
+        return tokens
+
+
 def _config():
     return ModelConfig(
         image_size=(28, 42),
@@ -89,6 +107,28 @@ def test_regnav_output_selection_and_trainability():
         if isinstance(module, LoRALinear)
     )
     assert model.backbone.blocks[0].attn.qkv.base.weight.grad is None
+
+
+def test_regnav_selects_vjepa_adapter_for_video_backbone():
+    config = ModelConfig(
+        image_size=(28, 42),
+        backbone="vjepa2_1_fake",
+        backbone_dim=4,
+        patch_size=14,
+        context_frames=4,
+        d_model=16,
+        d_ffn=32,
+        num_heads=4,
+        lora_rank=2,
+    )
+    backbone = FakeVJEPA2Backbone()
+    batch = _batch()
+    batch["image"] = torch.randn(2, 3, 4, 42, 28)
+
+    output = RegNav(config, backbone=backbone)(batch)
+
+    assert backbone.input_shape == (2, 3, 4, 42, 28)
+    assert output["trajectory"].shape == (2, 8, 3)
 
 
 def test_regnav_eval_omits_refinements():
