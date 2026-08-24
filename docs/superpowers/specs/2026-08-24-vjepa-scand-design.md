@@ -40,6 +40,7 @@
 - encoder FP32推論：出力`[1,1152,768]`、初回forward約252 ms、計測区間の追加VRAM約0.39 GiB
 - RegNav全体のBF16 autocast推論：出力軌道`[1,8,3]`、warm-up後約41.3 ms/sample（24.2 FPS）、追加VRAM約0.40 GiB
 - SCAND stride-10実データの学習1 step：batch 16、forward/backward/optimizer更新約1.14秒、ピーク約6.30 GiB
+- SCAND固定16件の40 step overfit：先頭5 step平均損失4.490、最終5 step平均0.0982（2.19%）
 - unit test：113件すべて成功
 
 公式Hub実装のcheckpoint URLは公開commitでもlocalhostを指すため、encoder構造だけを固定commitから読み、公開checkpointをHTTPSで直接取得してstrict loadする。checkpointは約1.55GBである。
