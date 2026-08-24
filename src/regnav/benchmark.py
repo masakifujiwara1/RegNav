@@ -11,6 +11,13 @@ from regnav.models.factory import build_model
 from regnav.training.engine import load_checkpoint
 
 
+def _image_shape(config: ModelConfig) -> tuple[int, ...]:
+    width, height = config.image_size
+    if config.context_frames > 1:
+        return (1, 3, config.context_frames, height, width)
+    return (1, 3, height, width)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark RegNav batch-1 latency")
     parser.add_argument("--checkpoint", type=Path, required=True)
@@ -26,9 +33,8 @@ def main() -> None:
     device = torch.device(args.device)
     model = build_model(config).to(device).eval()
     load_checkpoint(args.checkpoint, model, weights_only=True, map_location=device)
-    width, height = config.image_size
     batch = {
-        "image": torch.randn(1, 3, height, width, device=device),
+        "image": torch.randn(_image_shape(config), device=device),
         "ego": torch.zeros(1, config.ego_features, device=device),
         "route_goal": torch.zeros(1, config.route_features, device=device),
         "target_trajectory": torch.zeros(1, config.num_poses, 3, device=device),
