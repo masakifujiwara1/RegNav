@@ -27,6 +27,12 @@ def test_invalid_horizon_is_rejected(tmp_path):
         ModelConfig.from_yaml(path)
 
 
+def test_context_frames_must_be_positive():
+    with pytest.raises(ValueError):
+        ModelConfig(context_frames=0)
+
+
+
 def test_tensor_contract_keys_are_stable():
     assert RegNavBatch.__required_keys__ == {
         "image",

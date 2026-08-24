@@ -36,7 +36,8 @@ class VintTrajectoryDataset(Dataset[dict[str, torch.Tensor]]):
             )
             final_offset = ceil(config.horizon / record.sample_period)
             self.index.extend(
-                (record_index, frame) for frame in range(last_frame - final_offset + 1)
+                (record_index, frame)
+                for frame in range(config.context_frames - 1, last_frame - final_offset + 1)
             )
 
     def __len__(self) -> int:
@@ -57,8 +58,13 @@ class VintTrajectoryDataset(Dataset[dict[str, torch.Tensor]]):
         query_times = np.arange(1, self.config.num_poses + 1, dtype=np.float32) * self.config.interval
         target = resample_future(timestamps, local, query_times)
 
-        image = Image.open(root / f"{frame}.jpg")
-        image_tensor = preprocess_image(image, self.config.image_size)
+        images = [
+            preprocess_image(Image.open(root / f"{index}.jpg"), self.config.image_size)
+            for index in range(frame - self.config.context_frames + 1, frame + 1)
+        ]
+        image_tensor = (
+            images[0] if self.config.context_frames == 1 else torch.stack(images, dim=1)
+        )
         sample = {
             "image": image_tensor,
             "ego": torch.from_numpy(self._ego(positions, yaws, frame, record.sample_period)),

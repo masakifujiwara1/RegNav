@@ -19,6 +19,7 @@ class ModelConfig:
     backbone: str = "vit_small_patch14_reg4_dinov2"
     backbone_dim: int = 384
     patch_size: int = 14
+    context_frames: int = 1
     num_poses: int = 8
     interval: float = 0.5
     horizon: float = 4.0
@@ -39,6 +40,7 @@ class ModelConfig:
         positive = (
             "backbone_dim",
             "patch_size",
+            "context_frames",
             "num_poses",
             "ego_features",
             "route_features",

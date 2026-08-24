@@ -65,6 +65,18 @@ def test_dataset_emits_only_samples_with_complete_future(tmp_path):
     )
 
 
+def test_dataset_stacks_four_consecutive_context_frames(tmp_path):
+    config = ModelConfig(image_size=(32, 18), backbone="vjepa2_1_fake", patch_size=1, context_frames=4)
+    dataset = VintTrajectoryDataset([_trajectory(tmp_path, frames=13)], config)
+
+    assert len(dataset) == 2
+    sample = dataset[0]
+    assert sample["image"].shape == (3, 4, 18, 32)
+    red = sample["image"][0, :, 0, 0]
+    assert torch.all(red[1:] >= red[:-1])
+    assert red[-1] > red[0]
+
+
 def test_collate_pads_optional_obstacle_points(tmp_path):
     sample = VintTrajectoryDataset([_trajectory(tmp_path, obstacles=True)], _config())[0]
     without_points = dict(sample)
