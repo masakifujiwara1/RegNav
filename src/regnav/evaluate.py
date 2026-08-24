@@ -100,7 +100,10 @@ def summarize_batch(
         "route_only": route_only(batch["route_goal"], target.shape[1]),
     }
     model_metrics = trajectory_metrics(prediction, target, mask, interval)
-    result: dict[str, object] = {"model": model_metrics}
+    result: dict[str, object] = {
+        "model": model_metrics,
+        "target": trajectory_metrics(target, target, mask, interval),
+    }
     for name, trajectory in baselines.items():
         result[name] = trajectory_metrics(trajectory, target, mask, interval)
     result["meets_baseline_acceptance"] = (
