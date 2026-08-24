@@ -45,3 +45,38 @@ def test_adapter_rejects_partial_tubelet():
             context_frames=3,
             backbone=FakeVideoBackbone(),
         )
+
+def test_adapter_loads_official_checkpoint_without_broken_hub_url(monkeypatch):
+    hub_call = {}
+    checkpoint_call = {}
+    backbone = FakeVideoBackbone()
+    checkpoint = {
+        "ema_encoder": {
+            f"module.backbone.{name}": torch.ones_like(value)
+            for name, value in backbone.state_dict().items()
+        }
+    }
+
+    def fake_load(repository, model_name, **kwargs):
+        hub_call.update(repository=repository, model_name=model_name, **kwargs)
+        return backbone, nn.Identity()
+
+    def fake_checkpoint(url, **kwargs):
+        checkpoint_call.update(url=url, **kwargs)
+        return checkpoint
+
+    monkeypatch.setattr(torch.hub, "load", fake_load)
+    monkeypatch.setattr(torch.hub, "load_state_dict_from_url", fake_checkpoint)
+
+    VJEPA2Adapter(
+        "vjepa2_1_vit_base_384",
+        image_size=(384, 384),
+        patch_size=16,
+        context_frames=4,
+    )
+
+    assert hub_call["repository"].endswith(":45d025f")
+    assert hub_call["pretrained"] is False
+    assert hub_call["skip_validation"] is True
+    assert checkpoint_call["url"].startswith("https://dl.fbaipublicfiles.com/")
+    assert all(torch.all(parameter == 1) for parameter in backbone.parameters())
