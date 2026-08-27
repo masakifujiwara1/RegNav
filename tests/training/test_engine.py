@@ -7,7 +7,14 @@ from torch.utils.data import DataLoader
 
 from regnav.config import ModelConfig, TrainingConfig
 from regnav.models.lite import RegNavLite
-from regnav.training.engine import _autocast_dtype, _to_device, load_checkpoint, save_checkpoint, train_epoch
+from regnav.training.engine import (
+    _autocast_dtype,
+    _to_device,
+    load_checkpoint,
+    save_checkpoint,
+    train_epoch,
+    validation_ade,
+)
 
 
 class FakeMobileNet(nn.Module):
@@ -17,6 +24,17 @@ class FakeMobileNet(nn.Module):
 
     def forward(self, image):
         return self.conv(image)
+
+
+class FixedTrajectoryModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.anchor = nn.Parameter(torch.tensor(0.0))
+
+    def forward(self, batch):
+        return {
+            "trajectory": torch.zeros_like(batch["target_trajectory"]) + self.anchor
+        }
 
 
 def _model_config():
@@ -71,6 +89,18 @@ def test_autocast_dtype_falls_back_to_float16_without_bfloat16(monkeypatch):
     assert _autocast_dtype(torch.device("cuda")) is torch.float16
 
 
+def test_validation_ade_aggregates_real_trajectory_errors():
+    batch = _batch()
+    batch["target_trajectory"] = torch.zeros(2, 8, 3)
+    batch["target_trajectory"][..., 0] = 2.0
+
+    result = validation_ade(
+        FixedTrajectoryModel(), [batch, batch], torch.device("cpu")
+    )
+
+    assert result == pytest.approx(2.0)
+
+
 def test_one_epoch_checkpoint_round_trip(tmp_path):
     torch.manual_seed(3)
     model_config = _model_config()
@@ -89,6 +119,8 @@ def test_one_epoch_checkpoint_round_trip(tmp_path):
         model_config=model_config,
         training_config=training_config,
         manifest_hash="abc",
+        best_metric_name="validation/worst_ade",
+        best_metric=0.25,
     )
     inference_batch = _batch()
     expected = model(inference_batch)["trajectory"]
@@ -105,6 +137,8 @@ def test_one_epoch_checkpoint_round_trip(tmp_path):
     assert torch.isfinite(torch.tensor(losses["total"]))
     assert checkpoint.exists()
     assert metadata["epoch"] == 1
+    assert metadata["best_metric_name"] == "validation/worst_ade"
+    assert metadata["best_metric"] == 0.25
     torch.testing.assert_close(expected, restored(inference_batch)["trajectory"])
 
 

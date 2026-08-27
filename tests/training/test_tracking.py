@@ -89,10 +89,16 @@ def test_flatten_config_serializes_nested_values():
 def test_checkpoint_manifest_describes_present_checkpoints_and_ignores_missing(tmp_path):
     best = tmp_path / "best.pt"
     best.write_bytes(b"best")
-    manifest = checkpoint_manifest(tmp_path, final_epoch=4, best_loss=0.25)
+    manifest = checkpoint_manifest(
+        tmp_path,
+        final_epoch=4,
+        best_metric_name="validation/worst_ade",
+        best_metric=0.25,
+    )
 
     assert manifest["final_epoch"] == 4
-    assert manifest["best_loss"] == 0.25
+    assert manifest["best_metric_name"] == "validation/worst_ade"
+    assert manifest["best_metric"] == 0.25
     assert manifest["best.pt"] == {
         "path": str(best.resolve()),
         "size": 4,
@@ -108,7 +114,14 @@ def test_training_tracker_runs_lifecycle_and_logs_epoch(monkeypatch, tmp_path):
     )
 
     with _tracker(tmp_path) as tracker:
-        tracker.log_epoch(3, {"total": 0.25, "trajectory": 0.1})
+        tracker.log_epoch(
+            3,
+            {
+                "total": 0.25,
+                "trajectory": 0.1,
+                "validation/worst_ade": 0.3,
+            },
+        )
 
     assert fake.set_tracking_uri_calls == ["file:///tmp/mlruns"]
     assert fake.set_experiment_calls == ["regnav"]
@@ -126,7 +139,14 @@ def test_training_tracker_runs_lifecycle_and_logs_epoch(monkeypatch, tmp_path):
         }
     ]
     assert fake.log_metrics_calls == [
-        ({"train/total": 0.25, "train/trajectory": 0.1}, 3)
+        (
+            {
+                "train/total": 0.25,
+                "train/trajectory": 0.1,
+                "validation/worst_ade": 0.3,
+            },
+            3,
+        )
     ]
     assert fake.end_run_calls == [{"status": "FINISHED"}]
 
@@ -280,10 +300,13 @@ def test_disabled_training_tracker_does_not_import_or_call_mlflow(monkeypatch, t
         lambda name: imports.append(name) or fake,
     )
 
-    with _tracker(tmp_path, enabled=False) as tracker:
+    tracker = _tracker(tmp_path, enabled=False)
+    tracker.output_dir.mkdir()
+    with tracker:
         tracker.log_epoch(3, {"total": 0.25})
         tracker.log_artifacts(3, 0.25)
 
+    assert (tracker.output_dir / "checkpoint-manifest.json").is_file()
     assert imports == []
     assert all(not value for value in vars(fake).values())
     assert "MLFLOW_ALLOW_FILE_STORE" not in os.environ
@@ -318,8 +341,9 @@ def test_training_tracker_logs_present_artifacts(monkeypatch, tmp_path):
     (tracker.output_dir / "metrics.jsonl").write_text('{"total": 0.25}\n')
 
     with tracker:
-        tracker.log_artifacts(final_epoch=2, best_loss=0.25)
+        tracker.log_artifacts(final_epoch=2, best_metric=0.25)
 
+    assert fake.set_tags_calls[-1] == {"best_metric_name": "train/total"}
     assert fake.log_artifact_calls == [
         str(tracker.output_dir / "metrics.jsonl"),
         str(tracker.model_config_path),

@@ -3,7 +3,13 @@ from pathlib import Path
 import pytest
 from torch import nn
 
-from regnav.train import _build_parser, _ensure_output_dir_ready, _maybe_compile
+from regnav.train import (
+    _build_parser,
+    _checkpoint_metric,
+    _ensure_output_dir_ready,
+    _maybe_compile,
+    _summarize_validation_ade,
+)
 
 
 def _required_train_args():
@@ -27,6 +33,28 @@ def test_no_mlflow_is_explicit_opt_out():
     args = _build_parser().parse_args(_required_train_args() + ["--no-mlflow"])
 
     assert args.no_mlflow is True
+
+
+def test_validation_summary_reports_domains_macro_and_worst():
+    summary = _summarize_validation_ade(
+        {"scand/jackal": 0.3, "scand/spot": 0.1}
+    )
+
+    assert summary == pytest.approx(
+        {
+            "validation/scand_jackal_ade": 0.3,
+            "validation/scand_spot_ade": 0.1,
+            "validation/macro_ade": 0.2,
+            "validation/worst_ade": 0.3,
+        }
+    )
+
+
+def test_checkpoint_metric_prefers_worst_validation_domain():
+    assert _checkpoint_metric(
+        {"total": 0.1, "validation/worst_ade": 0.3}
+    ) == ("validation/worst_ade", 0.3)
+    assert _checkpoint_metric({"total": 0.1}) == ("train/total", 0.1)
 
 
 def test_maybe_compile_uses_reduce_overhead(monkeypatch):

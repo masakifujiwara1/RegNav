@@ -9,6 +9,7 @@ from torch import nn
 
 from regnav.config import ModelConfig, TrainingConfig
 from regnav.contracts import RegNavBatch
+from regnav.metrics import ade
 from regnav.models.lora import set_lora_enabled
 from regnav.training.losses import compute_loss
 
@@ -71,6 +72,37 @@ def train_epoch(
 
 
 @torch.no_grad()
+def validation_ade(
+    model: nn.Module,
+    loader: Iterable[RegNavBatch],
+    device: torch.device,
+) -> float:
+    model.eval()
+    model.to(device)
+    predictions = []
+    targets = []
+    masks = []
+    for batch in loader:
+        batch = _to_device(batch, device)
+        with torch.autocast(
+            device.type, dtype=_autocast_dtype(device), enabled=device.type == "cuda"
+        ):
+            output = model(batch)
+        predictions.append(output["trajectory"].cpu())
+        targets.append(batch["target_trajectory"].cpu())
+        masks.append(batch["valid_mask"].cpu())
+    if not predictions:
+        raise ValueError("loader must contain at least one batch")
+    return float(
+        ade(
+            torch.cat(predictions),
+            torch.cat(targets),
+            torch.cat(masks),
+        ).item()
+    )
+
+
+@torch.no_grad()
 def validate_epoch(
     model: nn.Module,
     loader: Iterable[RegNavBatch],
@@ -101,6 +133,8 @@ def save_checkpoint(
     training_config: TrainingConfig,
     manifest_hash: str,
     git_revision: str | None = None,
+    best_metric_name: str | None = None,
+    best_metric: float | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -112,6 +146,8 @@ def save_checkpoint(
             "training_config": asdict(training_config),
             "manifest_hash": manifest_hash,
             "git_revision": git_revision,
+            "best_metric_name": best_metric_name,
+            "best_metric": best_metric,
         },
         path,
     )

@@ -44,8 +44,17 @@ def flatten_config(prefix: str, values: Mapping[str, object]) -> dict[str, str]:
     }
 
 
-def checkpoint_manifest(output_dir: Path, final_epoch: int, best_loss: float) -> dict[str, object]:
-    manifest: dict[str, object] = {"final_epoch": final_epoch, "best_loss": best_loss}
+def checkpoint_manifest(
+    output_dir: Path,
+    final_epoch: int,
+    best_metric_name: str,
+    best_metric: float,
+) -> dict[str, object]:
+    manifest: dict[str, object] = {
+        "final_epoch": final_epoch,
+        "best_metric_name": best_metric_name,
+        "best_metric": best_metric,
+    }
     for name in ("best.pt", "last.pt"):
         path = output_dir / name
         if not path.is_file():
@@ -173,18 +182,34 @@ class TrainingTracker:
     def log_epoch(self, epoch: int, losses: Mapping[str, float]) -> None:
         if self._mlflow is not None:
             self._mlflow.log_metrics(
-                {f"train/{name}": value for name, value in losses.items()},
+                {
+                    name if name.startswith("validation/") else f"train/{name}": value
+                    for name, value in losses.items()
+                },
                 step=epoch,
             )
 
-    def log_artifacts(self, final_epoch: int, best_loss: float) -> None:
-        if self._mlflow is None:
-            return
-
+    def log_artifacts(
+        self,
+        final_epoch: int,
+        best_metric: float,
+        best_metric_name: str = "train/total",
+    ) -> None:
         manifest_path = self.output_dir / "checkpoint-manifest.json"
         manifest_path.write_text(
-            json.dumps(checkpoint_manifest(self.output_dir, final_epoch, best_loss))
+            json.dumps(
+                checkpoint_manifest(
+                    self.output_dir,
+                    final_epoch,
+                    best_metric_name,
+                    best_metric,
+                )
+            )
         )
+        if self._mlflow is None:
+            return
+        self._mlflow.set_tags({"best_metric_name": best_metric_name})
+
         artifact_paths = [
             self.output_dir / "metrics.jsonl",
             self.model_config_path,

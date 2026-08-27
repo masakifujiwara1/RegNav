@@ -90,7 +90,7 @@ def test_tracker_logs_dataset_tags_params_and_summary_artifact(monkeypatch, tmp_
     (tracker.output_dir / "metrics.jsonl").write_text("{}\n")
 
     with tracker:
-        tracker.log_artifacts(final_epoch=1, best_loss=0.25)
+        tracker.log_artifacts(final_epoch=1, best_metric=0.25)
 
     assert fake.tags == [
         {
@@ -101,7 +101,8 @@ def test_tracker_logs_dataset_tags_params_and_summary_artifact(monkeypatch, tmp_
             "device": "cpu",
             "compile_enabled": "False",
             "git_revision": "unknown",
-        }
+        },
+        {"best_metric_name": "train/total"},
     ]
     assert fake.params == [
         {
