@@ -138,3 +138,18 @@ def test_regnav_eval_omits_refinements():
         output = model(_batch())
 
     assert "refinements" not in output
+
+
+def test_regnav_cached_scene_inference_matches_forward():
+    model = RegNav(_config(), backbone=FakeDinoBackbone()).eval()
+    batch = _batch()
+
+    with torch.no_grad():
+        expected = model(batch)
+        scene = model.encode_scene(batch["image"])
+        actual = model.decode_scene(scene, batch["ego"], batch["route_goal"])
+
+    assert scene.shape == (2, model.config.num_scene_registers, model.config.d_model)
+    assert actual.keys() == expected.keys()
+    for name in actual:
+        torch.testing.assert_close(actual[name], expected[name])

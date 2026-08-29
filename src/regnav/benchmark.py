@@ -18,6 +18,67 @@ def _image_shape(config: ModelConfig) -> tuple[int, ...]:
     return (1, 3, height, width)
 
 
+def _percentiles(durations: list[float]) -> dict[str, float]:
+    return {
+        "p50_ms": float(np.percentile(durations, 50)),
+        "p95_ms": float(np.percentile(durations, 95)),
+        "p99_ms": float(np.percentile(durations, 99)),
+    }
+
+
+def _measure_operations(
+    operations: dict,
+    device: torch.device,
+    iterations: int,
+    warmup: int,
+) -> dict[str, dict[str, float]]:
+    def synchronize() -> None:
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+
+    for _ in range(warmup):
+        for operation in operations.values():
+            operation()
+    synchronize()
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    items = list(operations.items())
+    durations = {name: [] for name in operations}
+    for iteration in range(iterations):
+        offset = iteration % len(items)
+        for name, operation in items[offset:] + items[:offset]:
+            synchronize()
+            start = perf_counter()
+            operation()
+            synchronize()
+            durations[name].append((perf_counter() - start) * 1000)
+    return {name: _percentiles(values) for name, values in durations.items()}
+
+
+def _benchmark_stages(
+    model,
+    batch: dict[str, torch.Tensor],
+    device: torch.device,
+    iterations: int,
+    warmup: int,
+) -> dict[str, dict[str, float]]:
+    operations = {"end_to_end": lambda: model(batch)}
+    with torch.inference_mode():
+        if hasattr(model, "encode_scene") and hasattr(model, "decode_scene"):
+            scene = model.encode_scene(batch["image"])
+            operations.update(
+                {
+                    "scene_encoder": lambda: model.encode_scene(batch["image"]),
+                    "cached_head": lambda: model.decode_scene(
+                        scene, batch["ego"], batch["route_goal"]
+                    ),
+                }
+            )
+        return _measure_operations(
+            operations, device, iterations=iterations, warmup=warmup
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark RegNav batch-1 latency")
     parser.add_argument("--checkpoint", type=Path, required=True)
@@ -41,30 +102,13 @@ def main() -> None:
         "valid_mask": torch.ones(1, config.num_poses, dtype=torch.bool, device=device),
     }
 
-    def synchronize() -> None:
-        if device.type == "cuda":
-            torch.cuda.synchronize(device)
-
-    with torch.inference_mode():
-        for _ in range(args.warmup):
-            model(batch)
-        synchronize()
-        if device.type == "cuda":
-            torch.cuda.reset_peak_memory_stats(device)
-        durations = []
-        for _ in range(args.iterations):
-            synchronize()
-            start = perf_counter()
-            model(batch)
-            synchronize()
-            durations.append((perf_counter() - start) * 1000)
+    stages = _benchmark_stages(model, batch, device, args.iterations, args.warmup)
 
     result = {
         "device": str(device),
         "iterations": args.iterations,
-        "p50_ms": float(np.percentile(durations, 50)),
-        "p95_ms": float(np.percentile(durations, 95)),
-        "p99_ms": float(np.percentile(durations, 99)),
+        **stages["end_to_end"],
+        "stages": stages,
         "peak_cuda_memory_bytes": (
             torch.cuda.max_memory_allocated(device) if device.type == "cuda" else 0
         ),

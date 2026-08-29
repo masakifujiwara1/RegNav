@@ -44,21 +44,26 @@ class RegNav(nn.Module):
         self.decoder = TrajectoryRegisterDecoder(config)
         self.scorer = TrajectoryScorer(config)
 
-    def forward(self, batch: RegNavBatch) -> RegNavOutput:
-        scene = self.scene_pool(self.image_adapter(batch["image"]))
+    def encode_scene(self, image: torch.Tensor) -> torch.Tensor:
+        return self.scene_pool(self.image_adapter(image))
+
+    def decode_scene(
+        self,
+        scene: torch.Tensor,
+        ego: torch.Tensor,
+        route_goal: torch.Tensor,
+    ) -> RegNavOutput:
         trajectory_tokens = self.trajectory_embeddings[None].expand(
-            len(batch["image"]), -1, -1
+            len(scene), -1, -1
         )
         trajectory_tokens = (
             trajectory_tokens
-            + self.ego_projection(batch["ego"])[:, None]
-            + self.route_projection(batch["route_goal"])[:, None]
+            + self.ego_projection(ego)[:, None]
+            + self.route_projection(route_goal)[:, None]
         )
         refinements = self.decoder(scene, trajectory_tokens)
         proposals = refinements[-1]
-        scores, components = self.scorer(
-            proposals, scene, batch["ego"], batch["route_goal"]
-        )
+        scores, components = self.scorer(proposals, scene, ego, route_goal)
         trajectory = proposals[
             torch.arange(len(proposals), device=proposals.device), scores.argmax(dim=-1)
         ]
@@ -71,3 +76,10 @@ class RegNav(nn.Module):
         if self.training:
             output["refinements"] = refinements
         return output
+
+    def forward(self, batch: RegNavBatch) -> RegNavOutput:
+        return self.decode_scene(
+            self.encode_scene(batch["image"]),
+            batch["ego"],
+            batch["route_goal"],
+        )
