@@ -8,6 +8,7 @@ import torch
 
 from regnav.config import ModelConfig
 from regnav.models.factory import build_model
+from regnav.streaming import CachedSceneInference
 from regnav.training.engine import load_checkpoint
 
 
@@ -61,6 +62,7 @@ def _benchmark_stages(
     device: torch.device,
     iterations: int,
     warmup: int,
+    scene_refresh_interval: int | None = None,
 ) -> dict[str, dict[str, float]]:
     operations = {"end_to_end": lambda: model(batch)}
     with torch.inference_mode():
@@ -74,6 +76,10 @@ def _benchmark_stages(
                     ),
                 }
             )
+            if scene_refresh_interval is not None:
+                runner = CachedSceneInference(model, scene_refresh_interval)
+                operations["streaming"] = lambda: runner(batch)
+
         return _measure_operations(
             operations, device, iterations=iterations, warmup=warmup
         )
@@ -85,6 +91,7 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--iterations", type=int, default=1000)
     parser.add_argument("--warmup", type=int, default=50)
+    parser.add_argument("--scene-refresh-interval", type=int, default=5)
     args = parser.parse_args()
     if args.iterations <= 0 or args.warmup < 0:
         raise ValueError("iterations must be positive and warmup cannot be negative")
@@ -102,7 +109,10 @@ def main() -> None:
         "valid_mask": torch.ones(1, config.num_poses, dtype=torch.bool, device=device),
     }
 
-    stages = _benchmark_stages(model, batch, device, args.iterations, args.warmup)
+    stages = _benchmark_stages(
+        model, batch, device, args.iterations, args.warmup,
+        scene_refresh_interval=args.scene_refresh_interval,
+    )
 
     result = {
         "device": str(device),

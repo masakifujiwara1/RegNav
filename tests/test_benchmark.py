@@ -11,7 +11,7 @@ def test_image_shape_includes_temporal_context():
     assert _image_shape(config) == (1, 3, 4, 42, 28)
 
 
-class SplitModel:
+class SplitModel(torch.nn.Module):
     def encode_scene(self, image):
         return image.mean(dim=(-2, -1))
 
@@ -41,6 +41,21 @@ def test_benchmark_reports_end_to_end_encoder_and_cached_head():
     for stage in result.values():
         assert stage.keys() == {"p50_ms", "p95_ms", "p99_ms"}
         assert all(value >= 0 for value in stage.values())
+
+
+def test_benchmark_reports_streaming_latency_when_refresh_interval_is_set():
+    batch = {
+        "image": torch.ones(1, 3, 2, 2),
+        "ego": torch.zeros(1, 4),
+        "route_goal": torch.zeros(1, 6),
+    }
+
+    result = benchmark._benchmark_stages(
+        SplitModel(), batch, torch.device("cpu"), iterations=2, warmup=0,
+        scene_refresh_interval=2,
+    )
+
+    assert "streaming" in result
 
 
 class EndToEndOnlyModel:
