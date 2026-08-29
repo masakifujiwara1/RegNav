@@ -28,6 +28,17 @@ def _non_negative_int(value: str) -> int:
     return parsed
 
 
+def _evaluation_index(
+    index: list[tuple[int, int]], minimum_frame: int | None
+) -> list[tuple[int, int]]:
+    selected = index
+    if minimum_frame is not None:
+        selected = [item for item in index if item[1] >= minimum_frame]
+    if not selected:
+        raise ValueError("no evaluation samples remain after frame filtering")
+    return selected
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate a RegNav checkpoint")
     parser.add_argument("--checkpoint", type=Path, required=True)
@@ -37,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--visualize-dir", type=Path)
     parser.add_argument("--visualize-count", type=_non_negative_int, default=12)
     parser.add_argument("--visualize-worst-k", type=_non_negative_int, default=0)
+    parser.add_argument("--minimum-frame", type=_non_negative_int)
     return parser
 
 
@@ -123,6 +135,7 @@ def main() -> None:
     split = group_split(records, checkpoint["training_config"]["seed"], (0.8, 0.1, 0.1))
     records = [record for record in records if split[record.trajectory_id] == args.split]
     dataset = VintTrajectoryDataset(records, model_config)
+    dataset.index = _evaluation_index(dataset.index, args.minimum_frame)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_model(model_config).to(device).eval()
     load_checkpoint(args.checkpoint, model, weights_only=True, map_location=device)
@@ -213,6 +226,8 @@ def main() -> None:
         "model_config": checkpoint["model_config"],
         "checkpoint_hash": sha256(args.checkpoint.read_bytes()).hexdigest(),
         "split": args.split,
+        "minimum_frame": args.minimum_frame,
+        "samples": len(dataset),
         "aggregate": aggregate,
         "datasets": reports,
     }

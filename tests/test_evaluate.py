@@ -1,7 +1,19 @@
+import pytest
 import torch
 
 from regnav.baselines import route_only
-from regnav.evaluate import build_parser, summarize_batch
+from regnav.evaluate import _evaluation_index, build_parser, summarize_batch
+
+
+def test_evaluation_index_excludes_frames_before_minimum():
+    index = [(0, 0), (0, 3), (1, 2), (1, 4)]
+
+    assert _evaluation_index(index, 3) == [(0, 3), (1, 4)]
+
+
+def test_evaluation_index_rejects_empty_selection():
+    with pytest.raises(ValueError, match="no evaluation samples"):
+        _evaluation_index([(0, 0), (1, 1)], 2)
 
 
 def test_summary_accepts_route_aware_model_without_beating_zero_route_fde():
@@ -57,9 +69,12 @@ def test_parser_accepts_trajectory_visualization_options():
             "4",
             "--visualize-worst-k",
             "2",
+            "--minimum-frame",
+            "3",
         ]
     )
 
     assert str(args.visualize_dir) == "viz"
     assert args.visualize_count == 4
     assert args.visualize_worst_k == 2
+    assert args.minimum_frame == 3
