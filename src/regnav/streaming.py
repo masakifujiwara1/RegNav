@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from itertools import chain
+from math import isfinite
 from time import perf_counter
 
 import numpy as np
@@ -10,18 +11,38 @@ from regnav.metrics import ade, fde, heading_error, trajectory_metrics
 
 
 class CachedSceneInference:
-    def __init__(self, model, scene_refresh_interval: int):
+    def __init__(
+        self,
+        model,
+        scene_refresh_interval: int,
+        turn_rate_threshold: float | None = None,
+    ):
         if scene_refresh_interval <= 0:
             raise ValueError("scene_refresh_interval must be positive")
+        if turn_rate_threshold is not None and (
+            not isfinite(turn_rate_threshold) or turn_rate_threshold < 0
+        ):
+            raise ValueError("turn_rate_threshold must be non-negative")
         self.model = model.eval()
         self.scene_refresh_interval = scene_refresh_interval
+        self.turn_rate_threshold = turn_rate_threshold
         self.scene = None
         self.frame_index = 0
 
+        self.last_scene_refresh = None
     @torch.inference_mode()
     def __call__(self, batch: RegNavBatch) -> RegNavOutput:
-        if self.scene is None or self.frame_index % self.scene_refresh_interval == 0:
+        turning = self.turn_rate_threshold is not None and bool(
+            (batch["ego"][:, 1].abs() >= self.turn_rate_threshold).any()
+        )
+        if (
+            self.last_scene_refresh is None
+            or self.frame_index - self.last_scene_refresh
+            >= self.scene_refresh_interval
+            or turning
+        ):
             self.scene = self.model.encode_scene(batch["image"])
+            self.last_scene_refresh = self.frame_index
         output = self.model.decode_scene(
             self.scene, batch["ego"], batch["route_goal"]
         )
@@ -55,13 +76,28 @@ def evaluate_cache_intervals(
     trajectory_interval: float,
     device: torch.device,
     turn_rate_threshold: float = 0.3,
-) -> dict[int, dict[str, object]]:
+    adaptive_scene_refresh_interval: int | None = None,
+) -> dict[int | str, dict[str, object]]:
+    if (
+        adaptive_scene_refresh_interval is not None
+        and adaptive_scene_refresh_interval <= 0
+    ):
+        raise ValueError("adaptive_scene_refresh_interval must be positive")
+    if not isfinite(turn_rate_threshold) or turn_rate_threshold < 0:
+        raise ValueError("turn_rate_threshold must be finite and non-negative")
     model.eval()
     intervals = tuple(dict.fromkeys((1, *scene_refresh_intervals)))
-    caches = {interval: None for interval in intervals}
-    predictions: dict[int, list[torch.Tensor]] = {interval: [] for interval in intervals}
-    latencies: dict[int, list[float]] = {interval: [] for interval in intervals}
-    refreshes = {interval: 0 for interval in intervals}
+    policy_intervals: dict[int | str, int] = {interval: interval for interval in intervals}
+    if adaptive_scene_refresh_interval is not None:
+        policy_intervals[f"adaptive_{adaptive_scene_refresh_interval}"] = (
+            adaptive_scene_refresh_interval
+        )
+    policies = tuple(policy_intervals)
+    caches = {policy: None for policy in policies}
+    last_refreshes = {policy: None for policy in policies}
+    predictions = {policy: [] for policy in policies}
+    latencies = {policy: [] for policy in policies}
+    refreshes = {policy: 0 for policy in policies}
     targets: list[torch.Tensor] = []
     masks: list[torch.Tensor] = []
     turning_samples: list[torch.Tensor] = []
@@ -81,7 +117,7 @@ def evaluate_cache_intervals(
     with torch.inference_mode():
         _, warmup_batch = first_sample
         scene = model.encode_scene(warmup_batch["image"])
-        for _ in intervals:
+        for _ in policies:
             model.decode_scene(
                 scene, warmup_batch["ego"], warmup_batch["route_goal"]
             )
@@ -89,7 +125,8 @@ def evaluate_cache_intervals(
 
         for trajectory_id, batch in chain((first_sample,), iterator):
             if trajectory_id != previous_trajectory:
-                caches = {interval: None for interval in intervals}
+                caches = {policy: None for policy in policies}
+                last_refreshes = {policy: None for policy in policies}
                 frame = 0
                 previous_trajectory = trajectory_id
 
@@ -99,22 +136,32 @@ def evaluate_cache_intervals(
             synchronize()
             encoder_ms = (perf_counter() - start) * 1000
 
-            offset = measurement_frame % len(intervals)
-            ordered_intervals = intervals[offset:] + intervals[:offset]
-            for interval in ordered_intervals:
-                refresh = frame % interval == 0
+            turning = bool(
+                (batch["ego"][:, 1].abs() >= turn_rate_threshold).any()
+            )
+            offset = measurement_frame % len(policies)
+            ordered_policies = policies[offset:] + policies[:offset]
+            for policy in ordered_policies:
+                interval = policy_intervals[policy]
+                last_refresh = last_refreshes[policy]
+                refresh = (
+                    last_refresh is None
+                    or frame - last_refresh >= interval
+                    or isinstance(policy, str) and turning
+                )
                 if refresh:
-                    caches[interval] = scene
-                    refreshes[interval] += 1
+                    caches[policy] = scene
+                    last_refreshes[policy] = frame
+                    refreshes[policy] += 1
                 synchronize()
                 start = perf_counter()
                 output = model.decode_scene(
-                    caches[interval], batch["ego"], batch["route_goal"]
+                    caches[policy], batch["ego"], batch["route_goal"]
                 )
                 synchronize()
                 head_ms = (perf_counter() - start) * 1000
-                latencies[interval].append(head_ms + (encoder_ms if refresh else 0))
-                predictions[interval].append(output["trajectory"].cpu())
+                latencies[policy].append(head_ms + (encoder_ms if refresh else 0))
+                predictions[policy].append(output["trajectory"].cpu())
 
             targets.append(batch["target_trajectory"].cpu())
             masks.append(batch["valid_mask"].cpu())
@@ -129,8 +176,8 @@ def evaluate_cache_intervals(
     turning = torch.cat(turning_samples)
     full = torch.cat(predictions[1])
     report = {}
-    for interval in intervals:
-        prediction = torch.cat(predictions[interval])
+    for policy in policies:
+        prediction = torch.cat(predictions[policy])
         turning_report = None
         if turning.any():
             turning_report = {
@@ -142,13 +189,13 @@ def evaluate_cache_intervals(
                     prediction[turning], full[turning], mask[turning]
                 ),
             }
-        report[interval] = {
+        report[policy] = {
             "target": trajectory_metrics(
                 prediction, target, mask, trajectory_interval
             ),
             "delta_to_interval_1": _trajectory_delta(prediction, full, mask),
             "turning": turning_report,
-            "refresh_rate": refreshes[interval] / len(predictions[interval]),
-            "latency_ms": _latency_summary(latencies[interval]),
+            "refresh_rate": refreshes[policy] / len(predictions[policy]),
+            "latency_ms": _latency_summary(latencies[policy]),
         }
     return report

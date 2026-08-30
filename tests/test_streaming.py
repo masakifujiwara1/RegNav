@@ -32,9 +32,37 @@ def test_cached_scene_inference_refreshes_at_configured_interval():
     assert outputs == [1, 1, 1, 4, 4, 4]
 
 
+def test_cached_scene_inference_refreshes_early_while_turning():
+    runner = CachedSceneInference(
+        ValueModel(), scene_refresh_interval=5, turn_rate_threshold=0.5
+    )
+
+    outputs = []
+    for value in range(1, 9):
+        outputs.append(
+            runner(
+                {
+                    "image": torch.tensor([value]),
+                    "ego": torch.tensor([[0.0, float(value == 3), 0.0, 0.0]]),
+                    "route_goal": torch.empty(1, 0),
+                }
+            ).item()
+        )
+
+    assert outputs == [1, 1, 3, 3, 3, 3, 3, 8]
+
+
 def test_cached_scene_inference_rejects_non_positive_interval():
     with pytest.raises(ValueError, match="must be positive"):
         CachedSceneInference(ValueModel(), scene_refresh_interval=0)
+
+
+@pytest.mark.parametrize("value", [-0.1, float("nan"), float("inf")])
+def test_cached_scene_inference_rejects_invalid_turn_rate_threshold(value):
+    with pytest.raises(ValueError, match="turn_rate_threshold"):
+        CachedSceneInference(
+            ValueModel(), scene_refresh_interval=5, turn_rate_threshold=value
+        )
 
 
 class TrainingAwareModel(ValueModel):
@@ -100,6 +128,7 @@ def test_cache_interval_evaluation_resets_scene_between_trajectories():
         scene_refresh_intervals=(2,),
         trajectory_interval=0.5,
         device=torch.device("cpu"),
+        adaptive_scene_refresh_interval=2,
     )
 
     assert report[1]["delta_to_interval_1"]["ade"] == pytest.approx(0.0)
@@ -110,6 +139,27 @@ def test_cache_interval_evaluation_resets_scene_between_trajectories():
     assert report[2]["turning"]["samples"] == 2
     assert report[2]["turning"]["delta_to_interval_1"]["ade"] == pytest.approx(1.0)
     assert report[2]["turning"]["target"]["ade"] == pytest.approx(5.5)
+    assert report["adaptive_2"]["delta_to_interval_1"]["ade"] == pytest.approx(0.2)
+    assert report["adaptive_2"]["refresh_rate"] == pytest.approx(0.8)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"adaptive_scene_refresh_interval": 0}, "adaptive_scene_refresh_interval"),
+        ({"turn_rate_threshold": float("inf")}, "turn_rate_threshold"),
+    ],
+)
+def test_cache_interval_evaluation_rejects_invalid_adaptive_settings(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        streaming.evaluate_cache_intervals(
+            TrajectoryModel(),
+            (),
+            scene_refresh_intervals=(1,),
+            trajectory_interval=0.5,
+            device=torch.device("cpu"),
+            **kwargs,
+        )
 
 
 def _evaluation_samples(values):

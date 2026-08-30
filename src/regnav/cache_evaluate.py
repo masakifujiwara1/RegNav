@@ -42,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=[1, 2, 3, 5, 10],
     )
+    parser.add_argument(
+        "--adaptive-scene-refresh-interval",
+        type=_positive_int,
+    )
     parser.add_argument("--minimum-frame", type=_positive_int)
     parser.add_argument("--device")
     parser.add_argument(
@@ -83,6 +87,7 @@ def main() -> None:
         trajectory_interval=config.interval,
         device=device,
         turn_rate_threshold=args.turn_rate_threshold,
+        adaptive_scene_refresh_interval=args.adaptive_scene_refresh_interval,
     )
     report = {
         "model_config": checkpoint["model_config"],
@@ -92,6 +97,7 @@ def main() -> None:
         "samples": len(dataset),
         "device": str(device),
         "scene_refresh_intervals": list(intervals),
+        "adaptive_scene_refresh_interval": args.adaptive_scene_refresh_interval,
         "turn_rate_threshold": args.turn_rate_threshold,
         "intervals": results,
     }

@@ -83,6 +83,7 @@ uv run python -m regnav.cache_evaluate \
   --split test \
   --device cpu \
   --scene-refresh-intervals 1 2 3 5 10 \
+  --adaptive-scene-refresh-interval 5 \
   --turn-rate-threshold 0.3 \
   --output /data/regnav/runs/regnav/cache-intervals.json
 ```
