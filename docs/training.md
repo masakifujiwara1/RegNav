@@ -76,6 +76,15 @@ uv run python -m regnav.benchmark \
   --checkpoint /data/regnav/runs/regnav/best.pt \
   --device cuda \
   --iterations 1000
+
+uv run python -m regnav.cache_evaluate \
+  --checkpoint /data/regnav/runs/regnav/best.pt \
+  --manifest /data/regnav/manifest-scand.jsonl \
+  --split test \
+  --device cpu \
+  --scene-refresh-intervals 1 2 3 5 10 \
+  --turn-rate-threshold 0.3 \
+  --output /data/regnav/runs/regnav/cache-intervals.json
 ```
 
 Run the benchmark for both RegNav and RegNav-Lite checkpoints. Acceptance requires:
