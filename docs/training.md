@@ -77,6 +77,18 @@ uv run python -m regnav.benchmark \
   --device cuda \
   --iterations 1000
 
+uv run python -m regnav.benchmark \
+  --checkpoint /data/regnav/runs/regnav/best.pt \
+  --manifest /data/regnav/manifest-scand.jsonl \
+  --split test \
+  --device cpu \
+  --samples 100 \
+  --scene-refresh-interval 5 \
+  --turn-rate-threshold 0.3 \
+  --output /data/regnav/runs/regnav/replay-cpu-100.json
+
+
+Replay mode is CPU-only, uses one model warmup frame, and reports warm OS-cache JPEG latency.
 uv run python -m regnav.cache_evaluate \
   --checkpoint /data/regnav/runs/regnav/best.pt \
   --manifest /data/regnav/manifest-scand.jsonl \
